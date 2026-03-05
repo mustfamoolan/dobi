@@ -1,14 +1,12 @@
 /.phpunit.cache
 /node_modules
-/public/build
-/public/hot
-/public/storage
-/storage/*.key
-/storage/pail
-/vendor
-.env
+
+# .env and sensitive files — DO NOT upload
 .env.backup
 .env.production
+/storage/*.key
+
+# IDE & system files
 .phpactor.json
 .phpunit.result.cache
 Homestead.json
