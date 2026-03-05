@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>فاتورة</title>
+
+    <style>
+        /* ====== Page / Print ====== */
+        @page {
+            size: A4;
+            margin: 10mm;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Tahoma", "Arial", sans-serif;
+            color: #0b2b4a;
+            background: #fff;
+        }
+
+        /* Avoid browser header/footer if possible: use window.print() and disable headers in print dialog */
+
+        .sheet {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        .invoice {
+            border: 2px solid #1e5f93;
+            border-radius: 2mm;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ====== Header ====== */
+        .header {
+            padding: 10mm 8mm 6mm;
+            background: linear-gradient(#ffffff, #f5fbff);
+            border-bottom: 2px solid #1e5f93;
+            position: relative;
+        }
+
+        .header-grid {
+            display: grid;
+            grid-template-columns: 28mm 1fr 60mm;
+            gap: 6mm;
+            align-items: start;
+        }
+
+        .inv-vertical {
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            font-weight: 800;
+            letter-spacing: 2px;
+            color: #1e5f93;
+            border: 2px solid #1e5f93;
+            text-align: center;
+            padding: 3mm 0;
+            border-radius: 1.5mm;
+            height: 42mm;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: 18pt;
+            color: #1e5f93;
+            line-height: 1.1;
+            font-weight: 900;
+        }
+
+        .brand .sub {
+            margin-top: 2mm;
+            font-size: 10.5pt;
+            color: #1e5f93;
+            font-weight: 700;
+        }
+
+        .brand .desc {
+            margin-top: 2mm;
+            font-size: 9.5pt;
+            color: #2a4e6d;
+            line-height: 1.4;
+        }
+
+        .right-box {
+            display: grid;
+            gap: 4mm;
+            justify-items: end;
+        }
+
+        .cash-credit {
+            border: 2px solid #1e5f93;
+            border-radius: 1.5mm;
+            padding: 3mm;
+            width: 60mm;
+            text-align: center;
+            font-weight: 800;
+            color: #1e5f93;
+        }
+
+        .cash-credit small {
+            display: block;
+            font-weight: 700;
+            margin-top: 1mm;
+            color: #2a4e6d;
+        }
+
+        .inv-no {
+            border: 2px solid #1e5f93;
+            border-radius: 1.5mm;
+            padding: 3mm;
+            width: 60mm;
+            background: #f3f9ff;
+            text-align: center;
+        }
+
+        .inv-no .label {
+            font-size: 9pt;
+            color: #2a4e6d;
+            font-weight: 700;
+        }
+
+        .inv-no .value {
+            font-size: 14pt;
+            font-weight: 900;
+            color: #1e5f93;
+            margin-top: 1mm;
+        }
+
+        .logos {
+            margin-top: 4mm;
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 3mm;
+            align-items: center;
+        }
+
+        .logo {
+            border: 1px solid #b7d7ef;
+            border-radius: 1.5mm;
+            height: 10mm;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8pt;
+            color: #2a4e6d;
+            background: #ffffff;
+        }
+
+        /* ====== Meta line ====== */
+        .meta {
+            padding: 5mm 8mm;
+            border-bottom: 2px solid #1e5f93;
+            display: grid;
+            grid-template-columns: 1fr 60mm 60mm;
+            gap: 6mm;
+            align-items: center;
+            font-size: 10pt;
+        }
+
+        .meta .field {
+            border-bottom: 1px dotted #1e5f93;
+            padding: 1mm 0;
+        }
+
+        .meta .field b {
+            color: #1e5f93;
+        }
+
+        .meta .right {
+            text-align: left;
+            direction: ltr;
+        }
+
+        .meta .center {
+            text-align: center;
+        }
+
+        /* ====== Table ====== */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10pt;
+        }
+
+        thead th {
+            background: #e9f4ff;
+            border-bottom: 2px solid #1e5f93;
+            border-left: 1px solid #1e5f93;
+            padding: 3mm 2mm;
+            text-align: center;
+            color: #1e5f93;
+            font-weight: 900;
+        }
+
+        thead th:last-child {
+            border-left: none;
+        }
+
+        tbody td {
+            border-top: 1px solid #b7d7ef;
+            border-left: 1px solid #b7d7ef;
+            padding: 3mm 2mm;
+            vertical-align: top;
+        }
+
+        tbody td:last-child {
+            border-left: none;
+        }
+
+        .col-sno {
+            width: 12mm;
+            text-align: center;
+        }
+
+        .col-code {
+            width: 26mm;
+            text-align: center;
+            direction: ltr;
+        }
+
+        .col-desc {
+            width: auto;
+        }
+
+        .col-qty {
+            width: 18mm;
+            text-align: center;
+        }
+
+        .col-rate {
+            width: 30mm;
+            text-align: center;
+            direction: ltr;
+        }
+
+        .col-amt {
+            width: 34mm;
+            text-align: center;
+            direction: ltr;
+        }
+
+        .desc-ar {
+            font-weight: 700;
+        }
+
+        .desc-en {
+            font-size: 9pt;
+            color: #2a4e6d;
+            margin-top: 1mm;
+            direction: ltr;
+            text-align: left;
+        }
+
+        .watermark {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            opacity: 0.06;
+            font-size: 60pt;
+            font-weight: 900;
+            color: #1e5f93;
+            transform: rotate(-20deg);
+        }
+
+        /* ====== Totals & Footer ====== */
+        .bottom {
+            border-top: 2px solid #1e5f93;
+            padding: 6mm 8mm 8mm;
+            display: grid;
+            grid-template-columns: 1fr 80mm;
+            gap: 8mm;
+            align-items: end;
+        }
+
+        .notes {
+            font-size: 9.5pt;
+            color: #2a4e6d;
+            line-height: 1.6;
+        }
+
+        .totals {
+            border: 2px solid #1e5f93;
+            border-radius: 1.5mm;
+            overflow: hidden;
+        }
+
+        .totals .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            border-top: 1px solid #b7d7ef;
+        }
+
+        .totals .row:first-child {
+            border-top: none;
+        }
+
+        .totals .cell {
+            padding: 3mm;
+            font-weight: 800;
+        }
+
+        .totals .cell.label {
+            background: #e9f4ff;
+            color: #1e5f93;
+            border-left: 1px solid #b7d7ef;
+            text-align: center;
+        }
+
+        .totals .cell.value {
+            text-align: center;
+            direction: ltr;
+            color: #0b2b4a;
+            background: #fff;
+        }
+
+        .signatures {
+            margin-top: 5mm;
+            padding: 0 8mm 8mm;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10mm;
+            font-size: 10pt;
+            color: #2a4e6d;
+        }
+
+        .sig {
+            border-top: 1px dotted #1e5f93;
+            padding-top: 2mm;
+            text-align: center;
+        }
+
+        /* ====== Print tweaks ====== */
+        .no-print {
+            display: none;
+        }
+
+        @media screen {
+            .no-print {
+                display: inline-block;
+            }
+
+            .sheet {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="sheet">
+        <div class="invoice">
+            <div class="watermark">INVOICE</div>
+
+            <!-- ===== Header ===== -->
+            <div class="header">
+                <div class="header-grid">
+                    <div class="inv-vertical">INVOICE</div>
+
+                    <div class="brand">
+                        <!-- غيّر الاسم والعنوان حسب شركتك -->
+                        <h1>شركة .......... للتجارة</h1>
+                        <div class="sub">........ TRADING CO.</div>
+                        <div class="desc">
+                            قطع غيار أجهزة التبريد والتكييف<br>
+                            AIR CONDITIONER &amp; REFRIGERATION SPARE PARTS<br>
+                            بغداد – .......... | Tel: .......... | Email: ..........
+                        </div>
+
+                        <div class="logos" aria-label="Brand logos placeholders">
+                            <div class="logo">LOGO 1</div>
+                            <div class="logo">LOGO 2</div>
+                            <div class="logo">LOGO 3</div>
+                            <div class="logo">LOGO 4</div>
+                            <div class="logo">LOGO 5</div>
+                            <div class="logo">LOGO 6</div>
+                        </div>
+                    </div>
+
+                    <div class="right-box">
+                        <div class="cash-credit">
+                            نقدًا / على الحساب
+                            <small>CASH / CREDIT</small>
+                        </div>
+
+                        <div class="inv-no">
+                            <div class="label">No.</div>
+                            <div class="value">2581</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Meta ===== -->
+            <div class="meta">
+                <div class="field">
+                    <b>السيد /</b> <span id="customerName">اسم الزبون هنا</span>
+                </div>
+
+                <div class="field center">
+                    <b>التاريخ:</b> <span id="invoiceDate">2026/02/03</span>
+                </div>
+
+                <div class="field right">
+                    <b>L.P.O:</b> <span id="lpo">—</span>
+                </div>
+            </div>
+
+            <!-- ===== Items ===== -->
+            <div style="position:relative;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="col-sno">الرقم<br><small>S.No.</small></th>
+                            <th class="col-code">رقم النوع<br><small>Item Code</small></th>
+                            <th class="col-desc">التفاصيل<br><small>Description</small></th>
+                            <th class="col-qty">العدد<br><small>Qty.</small></th>
+                            <th class="col-rate">السعر<br><small>Rate (IQD)</small></th>
+                            <th class="col-amt">المبلغ<br><small>Amount (IQD)</small></th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="itemsBody">
+                        <tr>
+                            <td class="col-sno">1</td>
+                            <td class="col-code">—</td>
+                            <td class="col-desc">
+                                <div class="desc-ar">غاز فريون أمريكي 410</div>
+                                <div class="desc-en">Refrigerant Gas R410A</div>
+                            </td>
+                            <td class="col-qty">1</td>
+                            <td class="col-rate">255,000</td>
+                            <td class="col-amt">255,000</td>
+                        </tr>
+
+                        <!-- صفوف إضافية (اتركها فاضية أو احذفها) -->
+                        <tr>
+                            <td class="col-sno">&nbsp;</td>
+                            <td class="col-code"></td>
+                            <td class="col-desc"></td>
+                            <td class="col-qty"></td>
+                            <td class="col-rate"></td>
+                            <td class="col-amt"></td>
+                        </tr>
+                        <tr>
+                            <td class="col-sno">&nbsp;</td>
+                            <td class="col-code"></td>
+                            <td class="col-desc"></td>
+                            <td class="col-qty"></td>
+                            <td class="col-rate"></td>
+                            <td class="col-amt"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ===== Bottom ===== -->
+            <div class="bottom">
+                <div class="notes">
+                    <div><b>ملاحظة:</b> البضاعة المباعة لا تُرد ولا تُستبدل.</div>
+                    <div>Goods once sold will not be taken back.</div>
+                    <div>All electrical items carry no guarantee.</div>
+                    <div style="margin-top:4mm;">
+                        <b>المبلغ كتابةً:</b>
+                        <span id="amountWords">فقط مائتان وخمسة وخمسون ألف دينار</span>
+                    </div>
+                </div>
+
+                <div class="totals">
+                    <div class="row">
+                        <div class="cell label">المجموع<br><small>Total (IQD)</small></div>
+                        <div class="cell value" id="totalAmount">255,000</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="signatures">
+                <div class="sig">توقيع المستلم</div>
+                <div class="sig">For: Company Name</div>
+            </div>
+
+        </div>
+
+        <!-- زر للطباعة (يختفي عند الطباعة) -->
+        <button class="no-print" onclick="window.print()" style="margin-top:10px;padding:10px 14px;">
+            طباعة
+        </button>
+    </div>
+
+    <!-- مثال بسيط لتعبئة ديناميكية (اختياري) -->
+    <script>
+        // إذا برنامجك يولّد HTML من السيرفر، احذف السكربت واملأ القيم مباشرة
+        // أو استبدله ببياناتك الحقيقية
+    </script>
+</body>
+
+</html>
