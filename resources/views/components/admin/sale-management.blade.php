@@ -15,12 +15,16 @@ use Livewire\WithPagination;
 use Livewire\Attributes\Url;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
+use App\Notifications\SystemNotification;
+use App\Models\User;
 
 new class extends Component {
     use WithPagination;
 
     #[Url]
     public $search = '';
+    public $type = 'invoice'; // invoice, quotation, proforma
     public $showCreateModal = false;
 
     // Sale Form Fields
@@ -32,8 +36,10 @@ new class extends Component {
     public $exchange_rate;
     public $notes;
     public $payment_status = 'pending';
+    public $financial_account_id;
     public $items = []; // [{product_id, name, qty, price, subtotal}]
     public $viewingSale = null;
+    public $confirmingConvertId = null;
 
     // Item Addition Fields
     public $selected_product_id;
@@ -42,8 +48,9 @@ new class extends Component {
 
     protected $paginationTheme = 'bootstrap';
 
-    public function mount()
+    public function mount($type = 'invoice')
     {
+        $this->type = $type;
         $this->date = now()->format('Y-m-d');
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
@@ -62,6 +69,7 @@ new class extends Component {
         $this->warehouse_id = Warehouse::first()->id ?? null;
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
+        $this->financial_account_id = \App\Models\FinancialAccount::where('is_active', true)->first()?->id;
         $this->dispatch('open-sale-modal');
     }
 
@@ -131,6 +139,7 @@ new class extends Component {
             'currency' => 'required|string',
             'exchange_rate' => 'required|numeric|min:1',
             'items' => 'required|array|min:1',
+            'financial_account_id' => 'required_if:payment_status,paid',
         ]);
 
         $saleId = null; // will be set inside transaction
@@ -138,16 +147,19 @@ new class extends Component {
         DB::transaction(function () use (&$saleId) {
             $total = $this->total;
 
+            $isInvoice = $this->type === 'invoice';
+
             // 1. Create Sale record
             $sale = Sale::create([
                 'date' => $this->date,
                 'customer_id' => $this->customer_id,
                 'warehouse_id' => $this->warehouse_id,
-                'employee_id' => $this->employee_id,
+                'employee_id' => $this->employee_id ?: null,
                 'currency' => $this->currency,
                 'exchange_rate' => $this->exchange_rate,
                 'total' => $total,
                 'grand_total' => $total,
+                'type' => $this->type,
                 'payment_status' => $this->payment_status,
                 'notes' => $this->notes,
                 'created_by' => Auth::id(),
@@ -157,6 +169,7 @@ new class extends Component {
 
             // 2. Create Items & Stock Movements
             foreach ($this->items as $item) {
+                $product = Product::find($item['product_id']);
                 SaleItem::create([
                     'sale_id' => $sale->id,
                     'product_id' => $item['product_id'],
@@ -166,50 +179,94 @@ new class extends Component {
                     'subtotal' => $item['subtotal'],
                 ]);
 
-                StockMovement::create([
-                    'product_id' => $item['product_id'],
-                    'warehouse_id' => $this->warehouse_id,
-                    'qty_in' => 0,
-                    'qty_out' => $item['qty'],
-                    'ref_type' => 'sale',
-                    'ref_id' => $sale->id,
-                    'note' => 'Sale Invoice #' . $sale->id,
-                    'created_by' => Auth::id(),
-                ]);
+                if ($isInvoice) {
+                    StockMovement::create([
+                        'product_id' => $item['product_id'],
+                        'warehouse_id' => $this->warehouse_id,
+                        'qty_in' => 0,
+                        'qty_out' => $item['qty'],
+                        'ref_type' => 'sale',
+                        'ref_id' => $sale->id,
+                        'note' => 'Sale Invoice #' . $sale->id,
+                        'created_by' => Auth::id(),
+                    ]);
+                    
+                    if ($product) {
+                        $product->checkStockAlert();
+                    }
+                }
             }
 
-            // 3. Create Customer Ledger Entry (Debit = they owe us money)
-            CustomerLedger::create([
-                'customer_id' => $this->customer_id,
-                'date' => $this->date,
-                'type' => 'sale',
-                'description' => 'Sale Invoice #' . $sale->id,
-                'currency' => $this->currency,
-                'exchange_rate' => $this->exchange_rate,
-                'debit' => $total,
-                'credit' => 0,
-                'balance' => $total,
-                'ref_type' => 'sale',
-                'ref_id' => $sale->id,
-                'created_by' => Auth::id(),
-            ]);
+            if ($isInvoice) {
+                // 3. Create Customer Ledger Entry (Debit = they owe us money)
+                CustomerLedger::create([
+                    'customer_id' => $this->customer_id,
+                    'date' => $this->date,
+                    'type' => 'sale',
+                    'description' => 'Sale Invoice #' . $sale->id,
+                    'currency' => $this->currency,
+                    'exchange_rate' => $this->exchange_rate,
+                    'debit' => $total,
+                    'credit' => 0,
+                    'balance' => $total,
+                    'ref_type' => 'sale',
+                    'ref_id' => $sale->id,
+                    'created_by' => Auth::id(),
+                ]);
 
-            // 4. Create Employee Commission Entry (if applicable)
-            if ($this->employee_id) {
-                $employee = Employee::find($this->employee_id);
-                if ($employee && $employee->commission_rate > 0) {
-                    $commissionAmount = $total * ($employee->commission_rate / 100);
+                // 4. Create Employee Commission Entry (if applicable)
+                if ($this->employee_id) {
+                    $employee = Employee::find($this->employee_id);
+                    if ($employee && $employee->commission_rate > 0) {
+                        $commissionAmount = $total * ($employee->commission_rate / 100);
 
-                    EmployeeLedger::create([
-                        'employee_id' => $this->employee_id,
+                        EmployeeLedger::create([
+                            'employee_id' => $this->employee_id,
+                            'date' => $this->date,
+                            'type' => 'commission',
+                            'description' => 'Commission from Sale Invoice #' . $sale->id . ' (' . $employee->commission_rate . '%)',
+                            'currency' => $this->currency,
+                            'exchange_rate' => $this->exchange_rate,
+                            'debit' => 0,
+                            'credit' => $commissionAmount,
+                            'balance' => $commissionAmount,
+                            'ref_type' => 'sale',
+                            'ref_id' => $sale->id,
+                            'created_by' => Auth::id(),
+                        ]);
+                    }
+                }
+
+                // 5. If Paid, record in Treasury and credit customer
+                if ($this->payment_status === 'paid') {
+                    $account = \App\Models\FinancialAccount::findOrFail($this->financial_account_id);
+                    $treasuryAmount = $total;
+
+                    // Record in Treasury
+                    \App\Models\AccountLedger::create([
+                        'account_id' => $this->financial_account_id,
                         'date' => $this->date,
-                        'type' => 'commission',
-                        'description' => 'Commission from Sale Invoice #' . $sale->id . ' (' . $employee->commission_rate . '%)',
+                        'description' => __('Cash Sale') . ' #' . $sale->id . ' (' . $sale->customer->name . ')',
+                        'debit' => $treasuryAmount,
+                        'credit' => 0,
+                        'balance' => $account->current_balance + $treasuryAmount,
+                        'ref_type' => 'sale',
+                        'ref_id' => $sale->id,
+                        'created_by' => Auth::id(),
+                    ]);
+                    $account->increment('current_balance', $treasuryAmount);
+
+                    // Credit Customer (to cancel the debit from the sale)
+                    CustomerLedger::create([
+                        'customer_id' => $this->customer_id,
+                        'date' => $this->date,
+                        'type' => 'payment',
+                        'description' => __('Payment for Sale') . ' #' . $sale->id,
                         'currency' => $this->currency,
                         'exchange_rate' => $this->exchange_rate,
                         'debit' => 0,
-                        'credit' => $commissionAmount,
-                        'balance' => $commissionAmount, // This balance logic is also relative 
+                        'credit' => $total,
+                        'balance' => 0,
                         'ref_type' => 'sale',
                         'ref_id' => $sale->id,
                         'created_by' => Auth::id(),
@@ -218,16 +275,94 @@ new class extends Component {
             }
         });
 
-        session()->flash('success', 'Sales invoice created successfully.');
+        session()->flash('success', ucfirst($this->type) . ' created successfully.');
         $this->dispatch('close-sale-modal');
         $this->dispatch('sale-saved', id: $saleId);
+
+        // Notify Admins
+        $admins = User::where('role', 'admin')->get();
+        try {
+            $typeLabel = $this->type === 'invoice' ? 'Invoice' : ($this->type === 'quotation' ? 'Quotation' : 'Proforma');
+            Notification::send($admins, new SystemNotification(
+                "New {$typeLabel}",
+                "A new {$this->type} (#{$saleId}) has been created.",
+                $this->type === 'invoice' ? 'ri-shopping-cart-2-line' : 'ri-file-list-3-line',
+                route('admin.sales.index', ['type' => $this->type]),
+                'primary'
+            ));
+            $this->dispatch('refreshNotifications')->to('admin.notification-dropdown');
+        } catch (\Exception $e) { }
     }
 
     public function markAsPaid($id)
     {
         $sale = Sale::findOrFail($id);
         $sale->update(['payment_status' => 'paid']);
-        session()->flash('success', 'Sale marked as paid.');
+        session()->flash('success', 'Document marked as paid.');
+    }
+
+    public function confirmConversion($id)
+    {
+        $this->confirmingConvertId = $id;
+        $this->dispatch('open-confirm-convert-modal');
+    }
+
+    public function convertToInvoice()
+    {
+        if (!$this->confirmingConvertId) return;
+
+        $sale = Sale::findOrFail($this->confirmingConvertId);
+        $this->viewingSale = $sale;
+
+        DB::transaction(function () use ($sale) {
+            $sale->update(['type' => 'invoice']);
+
+            // Now apply the Ledger and Stock movements
+            foreach ($sale->items as $item) {
+                StockMovement::create([
+                    'product_id' => $item->product_id,
+                    'warehouse_id' => $sale->warehouse_id,
+                    'qty_in' => 0,
+                    'qty_out' => $item->qty,
+                    'ref_type' => 'sale',
+                    'ref_id' => $sale->id,
+                    'note' => 'Converted to Invoice #' . $sale->id,
+                    'created_by' => Auth::id(),
+                ]);
+            }
+
+            CustomerLedger::create([
+                'customer_id' => $sale->customer_id,
+                'date' => now()->format('Y-m-d'),
+                'type' => 'sale',
+                'description' => 'Invoice #' . $sale->id . ' (Converted)',
+                'currency' => $sale->currency,
+                'exchange_rate' => $sale->exchange_rate,
+                'debit' => $sale->grand_total,
+                'credit' => 0,
+                'balance' => $sale->grand_total,
+                'ref_type' => 'sale',
+                'ref_id' => $sale->id,
+                'created_by' => Auth::id(),
+            ]);
+        });
+
+        session()->flash('success', 'Converted to Invoice successfully.');
+        $this->dispatch('close-confirm-convert-modal');
+        $this->confirmingConvertId = null;
+
+        // Notification for conversion
+        $admins = User::where('role', 'admin')->get();
+        try {
+            Notification::send($admins, new SystemNotification(
+                "Converted to Invoice",
+                "Quotation/Proforma (#{$sale->id}) has been converted to a final Invoice.",
+                'ri-arrow-up-circle-line',
+                route('admin.sales.index'),
+                'success'
+            ));
+            $this->dispatch('refreshNotifications')->to('admin.notification-dropdown');
+        } catch (\Exception $e) { }
     }
 
     public function viewSale($id)
@@ -244,6 +379,7 @@ new class extends Component {
     public function render(): mixed
     {
         $sales = Sale::with('customer')
+            ->where('type', $this->type)
             ->whereHas('customer', function ($q) {
                 $q->where('name', 'like', '%' . $this->search . '%');
             })
@@ -270,12 +406,21 @@ new class extends Component {
 <div>
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-3">
-            <h5 class="card-title mb-0">{{ __('Sales Invoices') }}</h5>
+            <h5 class="card-title mb-0">
+                @if($type === 'invoice') {{ __('Sales Invoices') }}
+                @elseif($type === 'quotation') {{ __('Quotations') }}
+                @elseif($type === 'proforma') {{ __('Proforma Invoices') }}
+                @endif
+            </h5>
             <div class="d-flex gap-2">
                 <input type="search" wire:model.live="search" class="form-control form-control-sm"
                     placeholder="{{ __('Search by Customer...') }}">
                 <button wire:click="openCreateModal" class="btn btn-primary btn-sm">
-                    <i class="ri-add-line align-bottom me-1"></i> {{ __('New Sale') }}
+                    <i class="ri-add-line align-bottom me-1"></i>
+                    @if($type === 'invoice') {{ __('New Sale') }}
+                    @elseif($type === 'quotation') {{ __('New Quotation') }}
+                    @elseif($type === 'proforma') {{ __('New Proforma') }}
+                    @endif
                 </button>
             </div>
         </div>
@@ -327,10 +472,17 @@ new class extends Component {
                                         </button>
                                         <button wire:click="viewSale({{ $sale->id }})" class="btn btn-sm btn-soft-info" title="{{ __('View Details') }}"><i
                                                 class="ri-eye-line"></i></button>
-                                        @if($sale->payment_status !== 'paid')
+                                        @if($sale->payment_status !== 'paid' && $sale->type === 'invoice')
                                             <button wire:click="markAsPaid({{ $sale->id }})" class="btn btn-sm btn-soft-success"
                                                 title="{{ __('Mark as Paid') }}">
                                                 <i class="ri-check-double-line"></i>
+                                            </button>
+                                        @endif
+                                        @if($sale->type !== 'invoice')
+                                            <button wire:click="confirmConversion({{ $sale->id }})" 
+                                                class="btn btn-sm btn-soft-warning"
+                                                title="{{ __('Convert to Invoice') }}">
+                                                <i class="ri-arrow-up-circle-line"></i>
                                             </button>
                                         @endif
                                     </div>
@@ -352,7 +504,12 @@ new class extends Component {
         <div class="modal-dialog modal-xl modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="saleModalLabel">{{ __('New Sales Invoice') }}</h5>
+                    <h5 class="modal-title" id="saleModalLabel">
+                        @if($type === 'invoice') {{ __('New Sales Invoice') }}
+                        @elseif($type === 'quotation') {{ __('New Quotation') }}
+                        @elseif($type === 'proforma') {{ __('New Proforma') }}
+                        @endif
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form wire:submit.prevent="save">
@@ -411,11 +568,22 @@ new class extends Component {
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">{{ __('Payment Status') }}</label>
-                                <select wire:model="payment_status" class="form-select">
+                                <select wire:model.live="payment_status" class="form-select">
                                     <option value="pending">{{ __('pending') }}</option>
                                     <option value="paid">{{ __('paid') }}</option>
                                 </select>
                             </div>
+                            @if($payment_status === 'paid')
+                            <div class="col-md-3">
+                                <label class="form-label">{{ __('Deposit to Treasury') }}</label>
+                                <select wire:model="financial_account_id" class="form-select @error('financial_account_id') is-invalid @enderror">
+                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->get() as $fa)
+                                        <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
+                                    @endforeach
+                                </select>
+                                @error('financial_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            @endif
                         </div>
 
                         <div class="card border-primary-subtle shadow-none mb-4">
@@ -504,7 +672,9 @@ new class extends Component {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
-                        <button type="submit" class="btn btn-primary" {{ empty($items) ? 'disabled' : '' }}>{{ __('Save Sale') }}</button>
+                        <button type="submit" class="btn btn-primary" {{ empty($items) ? 'disabled' : '' }}>
+                            {{ __('Save') }}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -518,7 +688,12 @@ new class extends Component {
             <div class="modal-content border-0">
                 <div class="modal-header bg-primary py-3">
                     <h5 class="modal-title text-white" id="viewModalLabel">
-                        <i class="ri-file-text-line align-bottom me-1"></i> {{ __('Invoice Details') }} #{{ $viewingSale->id ?? '' }}
+                        <i class="ri-file-text-line align-bottom me-1"></i>
+                        @if($viewingSale?->type === 'invoice') {{ __('Invoice Details') }}
+                        @elseif($viewingSale?->type === 'quotation') {{ __('Quotation Details') }}
+                        @elseif($viewingSale?->type === 'proforma') {{ __('Proforma Details') }}
+                        @endif
+                        #{{ $viewingSale->id ?? '' }}
                     </h5>
                     <div class="ms-auto d-flex gap-2">
                         <button type="button" wire:click="directPrint({{ $viewingSale->id ?? 0 }})" class="btn btn-sm btn-light">
@@ -656,6 +831,33 @@ new class extends Component {
         </div>
     </div>
 
+    <!-- Confirm Convert Modal -->
+    <div wire:ignore.self class="modal fade" id="confirmConvertModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0">
+                <div class="modal-header bg-warning py-3">
+                    <h5 class="modal-title text-white">
+                        <i class="ri-alert-line align-bottom me-1"></i> {{ __('Confirmation Required') }}
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center p-4">
+                    <div class="avatar-lg mx-auto mb-3">
+                        <div class="avatar-title bg-warning-subtle text-warning display-5 rounded-circle">
+                            <i class="ri-refresh-line"></i>
+                        </div>
+                    </div>
+                    <h5>{{ __('Convert to Final Invoice?') }}</h5>
+                    <p class="text-muted">{{ __('Are you sure you want to convert this document to a final invoice? This will update stock and accounts.') }}</p>
+                    <div class="d-flex gap-2 justify-content-center mt-4">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
+                        <button type="button" wire:click="convertToInvoice" class="btn btn-warning px-4">{{ __('Convert Now') }}</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Hidden Iframe for Printing -->
     <iframe id="printFrame" style="display:none;"></iframe>
 
@@ -711,6 +913,18 @@ new class extends Component {
                 var myModalEl = document.getElementById('viewModal');
                 var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
                 modal.show();
+            });
+
+            Livewire.on('open-confirm-convert-modal', () => {
+                var myModalEl = document.getElementById('confirmConvertModal');
+                var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
+                modal.show();
+            });
+
+            Livewire.on('close-confirm-convert-modal', () => {
+                var myModalEl = document.getElementById('confirmConvertModal');
+                var modal = bootstrap.Modal.getInstance(myModalEl);
+                if (modal) modal.hide();
             });
 
             // Direct Printing Logic

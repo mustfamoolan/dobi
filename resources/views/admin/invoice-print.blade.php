@@ -25,8 +25,8 @@
             'discount' => $model->discount ?? 0,
             'extra' => $model->tax ?? 0,
             'net' => $model->grand_total,
-            'paid' => $model->paid_amount ?? $model->grand_total,
-            'remaining' => $model->remaining_amount ?? 0,
+            'paid' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? $model->grand_total : 0,
+            'remaining' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? 0 : $model->grand_total,
             'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total)
         ]
     ];

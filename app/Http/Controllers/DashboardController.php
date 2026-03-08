@@ -180,6 +180,7 @@ class DashboardController extends Controller
                     'customers_count' => \App\Models\Customer::count(),
                     'products_count' => \App\Models\Product::count(),
                     'recent_sales' => \App\Models\Sale::with('customer')->latest()->take(5)->get(),
+                    'treasury_total' => \App\Models\FinancialAccount::where('is_active', true)->sum('current_balance'),
                 ];
                 return view($page, $stats);
             }

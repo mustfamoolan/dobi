@@ -49,6 +49,27 @@
                 </div>
             </div>
 
+            {{-- Treasury Balance Card --}}
+            <div class="col-lg-3">
+                <div class="card card-h-100 overflow-hidden">
+                    <div class="card-body p-4">
+                        <div class="hstack flex-wrap justify-content-between gap-3 align-items-end">
+                            <div class="flex-grow-1">
+                                <div class="hstack gap-3 mb-3">
+                                    <div class="bg-warning-subtle text-warning avatar avatar-item rounded-2">
+                                        <i class="ri-wallet-3-line fs-16 fw-medium"></i>
+                                    </div>
+                                    <h6 class="mb-0 fs-13">{{ __('Treasury Balance') }}</h6>
+                                </div>
+                                <h4 class="fw-semibold fs-5 mb-0">
+                                    <span>{{ number_format($treasury_total, 0) }}</span>
+                                </h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {{-- Total Customers Card --}}
             <div class="col-lg-3">
                 <div class="card card-h-100 overflow-hidden">

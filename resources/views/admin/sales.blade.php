@@ -2,6 +2,6 @@
 @section('title', 'Sales Management')
 @section('content')
     <div class="page-content">
-        <livewire:admin.sale-management />
+        <livewire:admin.sale-management :type="$type ?? 'invoice'" />
     </div>
 @endsection

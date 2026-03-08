@@ -9,6 +9,10 @@ class Sale extends Model
 {
     use HasFactory;
 
+    public const TYPE_INVOICE = 'invoice';
+    public const TYPE_QUOTATION = 'quotation';
+    public const TYPE_PROFORMA = 'proforma';
+
     protected $fillable = [
         'date',
         'customer_id',
@@ -18,6 +22,7 @@ class Sale extends Model
         'discount',
         'tax',
         'grand_total',
+        'type',
         'payment_status',
         'notes',
         'created_by',

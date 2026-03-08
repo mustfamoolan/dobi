@@ -50,9 +50,15 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::get('/purchases', function () {
         return view('admin.purchases');
     })->name('purchases.index');
-    Route::get('/sales', function () {
-        return view('admin.sales');
-    })->name('sales.index');
+    Route::get('/sales/invoices', function () {
+        return view('admin.sales', ['type' => 'invoice']);
+    })->name('sales.index'); // Keep index for compatibility
+    Route::get('/sales/quotations', function () {
+        return view('admin.sales', ['type' => 'quotation']);
+    })->name('sales.quotations');
+    Route::get('/sales/proforma', function () {
+        return view('admin.sales', ['type' => 'proforma']);
+    })->name('sales.proforma');
     Route::get('/employees', function () {
         return view('admin.employees');
     })->name('employees.index');
@@ -76,6 +82,14 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::get('/settings/exchange-rate', function () {
         return view('admin.exchange-rate');
     })->name('settings.exchange-rate');
+
+    // Phase 11: Treasury (Cashbox)
+    Route::get('/accounts', function () {
+        return view('admin.accounts');
+    })->name('accounts.index');
+    Route::get('/accounts/{id}/ledger', function ($id) {
+        return view('admin.account-ledger', ['id' => $id]);
+    })->name('accounts.ledger');
 
     // Phase 10: Reports
     Route::prefix('reports')->name('reports.')->group(function () {

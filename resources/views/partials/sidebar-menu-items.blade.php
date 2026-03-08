@@ -58,7 +58,19 @@
     <li class="slide">
         <a href="{{ route('admin.sales.index') }}" class="side-menu__item" role="menuitem">
             <span class="side_menu_icon"><i class="ri-shopping-cart-2-line"></i></span>
-            <span class="side-menu__label">{{ __('Sales') }}</span>
+            <span class="side-menu__label">{{ __('Sales Invoices') }}</span>
+        </a>
+    </li>
+    <li class="slide">
+        <a href="{{ route('admin.sales.quotations') }}" class="side-menu__item" role="menuitem">
+            <span class="side_menu_icon"><i class="ri-file-list-3-line"></i></span>
+            <span class="side-menu__label">{{ __('Quotations') }}</span>
+        </a>
+    </li>
+    <li class="slide">
+        <a href="{{ route('admin.sales.proforma') }}" class="side-menu__item" role="menuitem">
+            <span class="side_menu_icon"><i class="ri-file-paper-2-line"></i></span>
+            <span class="side-menu__label">{{ __('Proforma Invoices') }}</span>
         </a>
     </li>
 
@@ -75,6 +87,12 @@
         <a href="{{ route('admin.vouchers.index') }}" class="side-menu__item" role="menuitem">
             <span class="side_menu_icon"><i class="ri-money-dollar-circle-line"></i></span>
             <span class="side-menu__label">{{ __('Vouchers') }}</span>
+        </a>
+    </li>
+    <li class="slide">
+        <a href="{{ route('admin.accounts.index') }}" class="side-menu__item" role="menuitem">
+            <span class="side_menu_icon"><i class="ri-safe-2-line"></i></span>
+            <span class="side-menu__label">{{ __('Financial Treasuries') }}</span>
         </a>
     </li>
 

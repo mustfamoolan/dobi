@@ -52,13 +52,20 @@ class Product extends Model
         return $this->currentStock();
     }
 
-    public function creator()
+    public function checkStockAlert()
     {
-        return $this->belongsTo(User::class, 'created_by');
-    }
-
-    public function updater()
-    {
-        return $this->belongsTo(User::class, 'updated_by');
+        if ($this->stock_alert > 0 && $this->currentStock() <= $this->stock_alert) {
+            $admins = User::where('role', 'admin')->get();
+            try {
+                \Illuminate\Support\Facades\Notification::send($admins, new \App\Notifications\SystemNotification(
+                    "Low Stock Alert",
+                    "Stock for product '{$this->name}' is low: " . $this->currentStock() . " remaining.",
+                    'ri-error-warning-line',
+                    route('admin.products.index'),
+                    'danger'
+                ));
+            } catch (\Exception $e) {
+            }
+        }
     }
 }

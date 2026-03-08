@@ -8,10 +8,14 @@ use App\Models\CustomerLedger;
 use App\Models\SupplierLedger;
 use App\Models\EmployeeLedger;
 use App\Models\AppSetting;
+use App\Models\FinancialAccount;
 use Livewire\Volt\Component;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
+use App\Notifications\SystemNotification;
+use App\Models\User;
 
 new class extends Component {
     use WithPagination;
@@ -21,6 +25,7 @@ new class extends Component {
 
     // Voucher Form Fields
     public $date;
+    public $financial_account_id;
     public $type = 'receipt'; // receipt, payment
     public $account_type = 'customer'; // customer, supplier, employee
     public $account_id;
@@ -36,6 +41,9 @@ new class extends Component {
         $this->date = now()->format('Y-m-d');
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
+
+        // Default to first active account
+        $this->financial_account_id = FinancialAccount::where('is_active', true)->first()?->id;
     }
 
     public function openCreateModal($type = 'receipt')
@@ -45,6 +53,7 @@ new class extends Component {
         $this->date = now()->format('Y-m-d');
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
+        $this->financial_account_id = FinancialAccount::where('is_active', true)->first()?->id;
         $this->dispatch('open-voucher-modal');
     }
 
@@ -52,6 +61,7 @@ new class extends Component {
     {
         $this->validate([
             'date' => 'required|date',
+            'financial_account_id' => 'required|exists:financial_accounts,id',
             'type' => 'required|in:receipt,payment',
             'account_type' => 'required|in:customer,supplier,employee',
             'account_id' => 'required',
@@ -64,6 +74,7 @@ new class extends Component {
             // 1. Create Voucher record
             $voucher = Voucher::create([
                 'date' => $this->date,
+                'financial_account_id' => $this->financial_account_id,
                 'type' => $this->type,
                 'account_type' => $this->account_type,
                 'account_id' => $this->account_id,
@@ -74,7 +85,15 @@ new class extends Component {
                 'created_by' => Auth::id(),
             ]);
 
-            // 2. Update corresponding Ledger
+            // 2. Update corresponding Ledger (Customer/Supplier/Employee)
+            $destinationLabel = "";
+            if ($this->account_type === 'customer')
+                $destinationLabel = Customer::find($this->account_id)?->name;
+            elseif ($this->account_type === 'supplier')
+                $destinationLabel = Supplier::find($this->account_id)?->name;
+            elseif ($this->account_type === 'employee')
+                $destinationLabel = Employee::find($this->account_id)?->name;
+
             $description = ucfirst($this->type) . ' Voucher #' . $voucher->id . ($this->notes ? ': ' . $this->notes : '');
 
             if ($this->account_type === 'customer') {
@@ -85,9 +104,9 @@ new class extends Component {
                     'description' => $description,
                     'currency' => $this->currency,
                     'exchange_rate' => $this->exchange_rate,
-                    'debit' => $this->type === 'payment' ? $this->amount : 0, // payment to customer (rare)
-                    'credit' => $this->type === 'receipt' ? $this->amount : 0, // receipt from customer
-                    'balance' => 0, // Balance logic handled in view or by observer
+                    'debit' => $this->type === 'payment' ? $this->amount : 0,
+                    'credit' => $this->type === 'receipt' ? $this->amount : 0,
+                    'balance' => 0,
                     'ref_type' => 'voucher',
                     'ref_id' => $voucher->id,
                     'created_by' => Auth::id(),
@@ -100,8 +119,8 @@ new class extends Component {
                     'description' => $description,
                     'currency' => $this->currency,
                     'exchange_rate' => $this->exchange_rate,
-                    'debit' => $this->type === 'payment' ? $this->amount : 0, // payment to supplier
-                    'credit' => $this->type === 'receipt' ? $this->amount : 0, // receipt from supplier (rare)
+                    'debit' => $this->type === 'payment' ? $this->amount : 0,
+                    'credit' => $this->type === 'receipt' ? $this->amount : 0,
                     'balance' => 0,
                     'ref_type' => 'voucher',
                     'ref_id' => $voucher->id,
@@ -115,18 +134,57 @@ new class extends Component {
                     'description' => $description,
                     'currency' => $this->currency,
                     'exchange_rate' => $this->exchange_rate,
-                    'debit' => $this->type === 'payment' ? $this->amount : 0, // payment to employee (salary/advance)
-                    'credit' => $this->type === 'receipt' ? $this->amount : 0, // receipt from employee
+                    'debit' => $this->type === 'payment' ? $this->amount : 0,
+                    'credit' => $this->type === 'receipt' ? $this->amount : 0,
                     'balance' => 0,
                     'ref_type' => 'voucher',
                     'ref_id' => $voucher->id,
                     'created_by' => Auth::id(),
                 ]);
             }
+
+            // 3. Record in Treasury/Cashbox Ledger
+            $account = FinancialAccount::findOrFail($this->financial_account_id);
+
+            // Note: If Voucher is multiple currency, we need to decide which currency to store in Treasury.
+            // For now, if currencies match, use it. If not, converting to Account currency might be needed.
+            // Assumption: Voucher amount is in the currency specified in $this->currency.
+
+            $treasuryAmount = $this->amount;
+
+            \App\Models\AccountLedger::create([
+                'account_id' => $this->financial_account_id,
+                'date' => $this->date,
+                'description' => __('Voucher') . ' #' . $voucher->id . ' (' . $destinationLabel . ')',
+                'debit' => $this->type === 'receipt' ? $treasuryAmount : 0, // In
+                'credit' => $this->type === 'payment' ? $treasuryAmount : 0, // Out
+                'balance' => $account->current_balance + ($this->type === 'receipt' ? $treasuryAmount : -$treasuryAmount),
+                'ref_type' => 'voucher',
+                'ref_id' => $voucher->id,
+                'created_by' => Auth::id(),
+            ]);
+
+            // 4. Update Treasury Current Balance
+            $account->increment('current_balance', $this->type === 'receipt' ? $treasuryAmount : -$treasuryAmount);
         });
 
         session()->flash('success', 'Voucher created successfully.');
         $this->dispatch('close-voucher-modal');
+
+        // Notify Admins
+        $admins = User::where('role', 'admin')->get();
+        try {
+            $typeLabel = $this->type === 'receipt' ? 'Receipt Voucher' : 'Payment Voucher';
+            Notification::send($admins, new SystemNotification(
+                "New {$typeLabel}",
+                "A new {$this->type} (#{$voucher->id}) has been created.",
+                $this->type === 'receipt' ? 'ri-arrow-left-down-line' : 'ri-arrow-right-up-line',
+                route('admin.vouchers.index'),
+                $this->type === 'receipt' ? 'success' : 'danger'
+            ));
+            $this->dispatch('refreshNotifications')->to('admin.notification-dropdown');
+        } catch (\Exception $e) {
+        }
     }
 
     public function render(): mixed
@@ -144,6 +202,7 @@ new class extends Component {
         return view('components.admin.voucher-management', [
             'vouchers' => $vouchers,
             'accounts' => $accounts,
+            'financialAccounts' => FinancialAccount::where('is_active', true)->get(),
         ]);
     }
 };
@@ -175,9 +234,9 @@ new class extends Component {
                             <th>{{ __('Date') }}</th>
                             <th>{{ __('Type') }}</th>
                             <th>{{ __('Account') }}</th>
+                            <th>{{ __('Treasury') }}</th>
                             <th>{{ __('Amount') }}</th>
                             <th>{{ __('Notes') }}</th>
-                            <th class="text-end">{{ __('Created By') }}</th>
                             <th class="text-end">{{ __('Action') }}</th>
                         </tr>
                     </thead>
@@ -197,12 +256,16 @@ new class extends Component {
                                     {{ $voucher->account->name ?? __('Deleted') }}
                                 </td>
                                 <td>
+                                    <span class="badge bg-light text-dark">
+                                        {{ $voucher->financialAccount->name ?? '-' }}
+                                    </span>
+                                </td>
+                                <td>
                                     <strong>{{ number_format($voucher->amount, 0) }} {{ $voucher->currency }}</strong>
                                     <br><small class="text-muted">{{ __('Rate') }}:
                                         {{ number_format($voucher->exchange_rate, 0) }}</small>
                                 </td>
                                 <td>{{ $voucher->notes }}</td>
-                                <td class="text-end">{{ $voucher->creator->name ?? __('System') }}</td>
                                 <td class="text-end">
                                     <a href="{{ route('admin.vouchers.print', $voucher->id) }}" target="_blank"
                                         class="btn btn-sm btn-soft-primary" title="{{ __('Print') }}">
@@ -245,6 +308,17 @@ new class extends Component {
                                     <option value="employee">{{ __('Employee') }}</option>
                                 </select>
                             </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Select Treasury / Account') }}</label>
+                            <select wire:model="financial_account_id"
+                                class="form-select @error('financial_account_id') is-invalid @enderror">
+                                @foreach($financialAccounts as $fa)
+                                    <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
+                                @endforeach
+                            </select>
+                            @error('financial_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
 
                         <div class="mb-3">

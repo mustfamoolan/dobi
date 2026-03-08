@@ -8,6 +8,7 @@ class Voucher extends Model
 {
     protected $fillable = [
         'date',
+        'financial_account_id',
         'type',
         'account_type',
         'account_id',
@@ -17,6 +18,11 @@ class Voucher extends Model
         'notes',
         'created_by',
     ];
+
+    public function financialAccount()
+    {
+        return $this->belongsTo(FinancialAccount::class);
+    }
 
     public function creator()
     {

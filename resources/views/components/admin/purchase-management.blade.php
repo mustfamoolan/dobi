@@ -11,6 +11,9 @@ use Livewire\Component;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
+use App\Notifications\SystemNotification;
+use App\Models\User;
 
 new class extends Component {
     use WithPagination;
@@ -26,6 +29,7 @@ new class extends Component {
     public $exchange_rate;
     public $notes;
     public $payment_status = 'pending';
+    public $financial_account_id;
     public $items = []; // [{product_id, name, qty, cost, subtotal}]
     public $viewingPurchase = null;
 
@@ -56,6 +60,7 @@ new class extends Component {
         $this->warehouse_id = \App\Models\Warehouse::first()->id ?? null;
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
+        $this->financial_account_id = \App\Models\FinancialAccount::where('is_active', true)->first()?->id;
         $this->showCreateModal = true;
         $this->dispatch('open-purchase-modal');
     }
@@ -109,6 +114,7 @@ new class extends Component {
             'currency' => 'required|string',
             'exchange_rate' => 'required|numeric|min:1',
             'items' => 'required|array|min:1',
+            'financial_account_id' => 'required_if:payment_status,paid',
         ]);
 
         DB::transaction(function () {
@@ -165,10 +171,59 @@ new class extends Component {
                 'ref_id' => $purchase->id,
                 'created_by' => Auth::id(),
             ]);
+
+            // 4. If Paid, record in Treasury and debit supplier
+            if ($this->payment_status === 'paid') {
+                $account = \App\Models\FinancialAccount::findOrFail($this->financial_account_id);
+                $treasuryAmount = $total;
+
+                // Record in Treasury
+                \App\Models\AccountLedger::create([
+                    'account_id' => $this->financial_account_id,
+                    'date' => $this->date,
+                    'description' => __('Cash Purchase') . ' #' . $purchase->id . ' (' . $purchase->supplier->name . ')',
+                    'debit' => 0,
+                    'credit' => $treasuryAmount,
+                    'balance' => $account->current_balance - $treasuryAmount,
+                    'ref_type' => 'purchase',
+                    'ref_id' => $purchase->id,
+                    'created_by' => Auth::id(),
+                ]);
+                $account->decrement('current_balance', $treasuryAmount);
+
+                // Debit Supplier (to cancel the credit from the purchase)
+                SupplierLedger::create([
+                    'supplier_id' => $this->supplier_id,
+                    'date' => $this->date,
+                    'type' => 'payment',
+                    'description' => __('Payment for Purchase') . ' #' . $purchase->id,
+                    'currency' => $this->currency,
+                    'exchange_rate' => $this->exchange_rate,
+                    'debit' => $total,
+                    'credit' => 0,
+                    'balance' => 0,
+                    'ref_type' => 'purchase',
+                    'ref_id' => $purchase->id,
+                    'created_by' => Auth::id(),
+                ]);
+            }
         });
 
         session()->flash('success', 'Purchase invoice created successfully.');
         $this->dispatch('close-purchase-modal');
+
+        // Notify Admins
+        $admins = User::where('role', 'admin')->get();
+        try {
+            Notification::send($admins, new SystemNotification(
+                "New Purchase",
+                "A new purchase (#{$purchase->id}) has been created from " . ($purchase->supplier->name ?? 'Unknown Supplier'),
+                'ri-bill-line',
+                route('admin.purchases.index'),
+                'warning'
+            ));
+            $this->dispatch('refreshNotifications')->to('admin.notification-dropdown');
+        } catch (\Exception $e) { }
     }
 
     public function markAsPaid($id)
@@ -340,11 +395,22 @@ new class extends Component {
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">{{ __('Payment Status') }}</label>
-                                <select wire:model="payment_status" class="form-select">
+                                <select wire:model.live="payment_status" class="form-select">
                                     <option value="pending">{{ __('pending') }}</option>
                                     <option value="paid">{{ __('paid') }}</option>
                                 </select>
                             </div>
+                            @if($payment_status === 'paid')
+                            <div class="col-md-3">
+                                <label class="form-label">{{ __('Pay from Treasury') }}</label>
+                                <select wire:model="financial_account_id" class="form-select @error('financial_account_id') is-invalid @enderror">
+                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->get() as $fa)
+                                        <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
+                                    @endforeach
+                                </select>
+                                @error('financial_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            @endif
                         </div>
 
                         <div class="card border-primary-subtle shadow-none mb-4">

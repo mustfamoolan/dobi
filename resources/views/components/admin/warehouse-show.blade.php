@@ -53,8 +53,13 @@ new class extends Component {
     public function with()
     {
         return [
-            'products' => Product::where('name', 'like', '%' . $this->productSearch . '%')
-                ->orWhere('sku', 'like', '%' . $this->productSearch . '%')
+            'products' => Product::where(function ($q) {
+                $q->where('name', 'like', '%' . $this->productSearch . '%')
+                    ->orWhere('sku', 'like', '%' . $this->productSearch . '%');
+            })
+                ->whereHas('stockMovements', function ($q) {
+                    $q->where('warehouse_id', $this->warehouse->id);
+                })
                 ->get()
         ];
     }
