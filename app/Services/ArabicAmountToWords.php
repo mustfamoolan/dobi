@@ -9,8 +9,14 @@ class ArabicAmountToWords
     private $arabicHundreds = ["", "مائة", "مائتان", "ثلاثمائة", "أربعمائة", "خمسمائة", "ستمائة", "سبعمائة", "ثمانمائة", "تسعمائة"];
     private $arabicAppellation = ["", "ألف", "مليون", "مليار"];
 
-    public function convert($amount, $currency = "دينار")
+    public function convert($amount, $currencyCode = "IQD")
     {
+        $currencyMap = [
+            'IQD' => 'دينار عراقي',
+            'USD' => 'دولار أمريكي',
+        ];
+        $currency = $currencyMap[$currencyCode] ?? $currencyCode;
+
         if ($amount == 0)
             return "صفر " . $currency;
 

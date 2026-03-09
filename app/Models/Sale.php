@@ -18,6 +18,8 @@ class Sale extends Model
         'customer_id',
         'employee_id',
         'warehouse_id',
+        'currency',
+        'exchange_rate',
         'total',
         'discount',
         'tax',

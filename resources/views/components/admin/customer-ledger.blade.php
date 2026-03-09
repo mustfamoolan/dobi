@@ -12,6 +12,7 @@ new class extends Component {
     public $customerId;
     public $fromDate;
     public $toDate;
+    public $currency = 'IQD';
 
     protected $paginationTheme = 'bootstrap';
 
@@ -27,6 +28,7 @@ new class extends Component {
         $customer = Customer::findOrFail($this->customerId);
 
         $query = CustomerLedger::where('customer_id', $this->customerId)
+            ->where('currency', $this->currency)
             ->whereBetween('date', [$this->fromDate, $this->toDate])
             ->orderBy('date', 'asc')
             ->orderBy('id', 'asc');
@@ -35,9 +37,15 @@ new class extends Component {
 
         // Calculate Opening Balance before the "from" date
         $previousBalance = CustomerLedger::where('customer_id', $this->customerId)
+            ->where('currency', $this->currency)
             ->where('date', '<', $this->fromDate)
             ->selectRaw('SUM(debit) - SUM(credit) as balance')
             ->first()->balance ?? 0;
+
+        // Add the customer's initial opening balance for this currency if it's the very first entry
+        // and its date is within the range or if we are looking at the start of time.
+        // Actually, the saving logic already creates a ledger entry for 'opening_balance'. 
+        // So we just need to ensure the ledger entry is picked up.
 
         return view('components.admin.customer-ledger', [
             'customer' => $customer,
@@ -55,11 +63,16 @@ new class extends Component {
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <div>
                         <h5 class="card-title mb-0">{{ __('Statement of Account') }}: {{ $customer->name }}</h5>
-                        <p class="text-muted mb-0">{{ $customer->phone }} | {{ __('Balance') }}:
-                            {{ number_format($customer->opening_balance, 0) }} {{ $customer->currency }}
+                        <p class="text-muted mb-0">{{ $customer->phone }} |
+                            {{ __('Balance IQD') }}: {{ number_format($customer->opening_balance_iqd, 0) }} |
+                            {{ __('Balance USD') }}: {{ number_format($customer->opening_balance_usd, 2) }}
                         </p>
                     </div>
                     <div class="d-flex gap-2">
+                        <select wire:model.live="currency" class="form-select form-select-sm" style="width: 100px;">
+                            <option value="IQD">IQD</option>
+                            <option value="USD">USD</option>
+                        </select>
                         <input type="date" wire:model.live="fromDate" class="form-control form-control-sm">
                         <input type="date" wire:model.live="toDate" class="form-control form-control-sm">
                         <button onclick="window.print()" class="btn btn-soft-secondary btn-sm"><i
@@ -129,8 +142,8 @@ new class extends Component {
                                     <th class="text-end">{{ number_format($entries->sum('debit'), 0) }}</th>
                                     <th class="text-end">{{ number_format($entries->sum('credit'), 0) }}</th>
                                     <th class="text-end bg-primary-subtle">
-                                        <strong>{{ number_format($currentBalance, 0) }}
-                                            {{ $customer->currency }}</strong>
+                                        <strong>{{ number_format($currentBalance, $currency === 'USD' ? 2 : 0) }}
+                                            {{ $currency }}</strong>
                                     </th>
                                 </tr>
                             </tfoot>

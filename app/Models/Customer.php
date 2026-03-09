@@ -10,8 +10,8 @@ class Customer extends Model
         'name',
         'phone',
         'address',
-        'opening_balance',
-        'currency',
+        'opening_balance_iqd',
+        'opening_balance_usd',
         'created_by',
         'updated_by',
     ];

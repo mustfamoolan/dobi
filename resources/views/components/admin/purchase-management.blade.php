@@ -321,7 +321,7 @@ new class extends Component {
                                 <td>{{ $purchase->date }}</td>
                                 <td>{{ $purchase->supplier->name }}</td>
                                 <td>
-                                    <strong>{{ number_format($purchase->grand_total, 0) }}
+                                    <strong>{{ number_format($purchase->grand_total, $purchase->currency === 'USD' ? 2 : 0) }}
                                         {{ $purchase->currency }}</strong>
                                     @if($purchase->currency !== 'IQD')
                                         <br><small
@@ -485,9 +485,9 @@ new class extends Component {
                                         <tr>
                                             <td>{{ $item['name'] }}</td>
                                             <td class="text-center">{{ $item['qty'] }}</td>
-                                            <td class="text-end">{{ number_format($item['cost'], 0) }}</td>
-                                            <td class="text-end">{{ number_format($item['price'], 0) }}</td>
-                                            <td class="text-end">{{ number_format($item['subtotal'], 0) }}</td>
+                                            <td class="text-end">{{ number_format($item['cost'], $currency === 'USD' ? 2 : 0) }}</td>
+                                            <td class="text-end">{{ number_format($item['price'], $currency === 'USD' ? 2 : 0) }}</td>
+                                            <td class="text-end">{{ number_format($item['subtotal'], $currency === 'USD' ? 2 : 0) }}</td>
                                             <td class="text-center">
                                                 <button type="button" wire:click="removeItem({{ $index }})"
                                                     class="btn btn-link link-danger p-0 pt-1">
@@ -506,7 +506,7 @@ new class extends Component {
                                 <tfoot>
                                     <tr>
                                         <th colspan="4" class="text-end">{{ __('Total Amount') }}</th>
-                                        <th class="text-end text-primary fs-16">{{ number_format($this->total, 0) }}
+                                        <th class="text-end text-primary fs-16">{{ number_format($this->total, $currency === 'USD' ? 2 : 0) }}
                                         </th>
                                         <th></th>
                                     </tr>
@@ -680,10 +680,10 @@ new class extends Component {
                                                     {{ number_format($item->qty, 0) }}</td>
                                                 <td
                                                     style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">
-                                                    {{ number_format($item->cost, 0) }}</td>
+                                                    {{ number_format($item->cost, $viewingPurchase->currency === 'USD' ? 2 : 0) }}</td>
                                                 <td
                                                     style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">
-                                                    {{ number_format($item->subtotal, 0) }}</td>
+                                                    {{ number_format($item->subtotal, $viewingPurchase->currency === 'USD' ? 2 : 0) }}</td>
                                             </tr>
                                         @endforeach
                                         @for($i = count($viewingPurchase->items); $i < 6; $i++)
@@ -702,7 +702,7 @@ new class extends Component {
                                 <!-- Final Words -->
                                 <div
                                     style="font-size: 10pt; font-weight: 700; text-align: center; margin-top: 3mm; margin-bottom: 2mm;">
-                                    {{ \App\Services\ArabicAmountToWords::translate($viewingPurchase->grand_total) }}
+                                    {{ \App\Services\ArabicAmountToWords::translate($viewingPurchase->grand_total, $viewingPurchase->currency) }}
                                 </div>
 
                                 <!-- Summary Row -->
@@ -712,10 +712,10 @@ new class extends Component {
                                     </div>
                                     <div
                                         style="background-color: #deeaf6; padding: 1.5mm; text-align: center; font-weight: 900; border-right: 2px solid #3491d1; border-left: 2px solid #3491d1;">
-                                        Total Dinar / المجموع
+                                        {{ $viewingPurchase->currency === 'USD' ? 'Total USD / المجموع' : 'Total Dinar / المجموع' }}
                                     </div>
                                     <div style="padding: 1.5mm; text-align: center; font-weight: 900; font-size: 11pt;">
-                                        {{ number_format($viewingPurchase->grand_total, 0) }}
+                                        {{ number_format($viewingPurchase->grand_total, $viewingPurchase->currency === 'USD' ? 2 : 0) }}
                                     </div>
                                 </div>
 

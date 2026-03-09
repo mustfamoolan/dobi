@@ -11,6 +11,7 @@
             'phone' => $model->customer->phone ?? $model->supplier->phone ?? '',
             'address' => $model->customer->address ?? $model->supplier->address ?? '',
         ],
+        'currency' => $model->currency,
         'items' => $model->items->map(function ($item, $index) {
             return [
                 'no' => $index + 1,
@@ -27,7 +28,7 @@
             'net' => $model->grand_total,
             'paid' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? $model->grand_total : 0,
             'remaining' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? 0 : $model->grand_total,
-            'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total)
+            'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total, $model->currency)
         ]
     ];
 @endphp
@@ -409,10 +410,10 @@
                 <div class="info-grid">
                     <div class="info-item"><label>رقم الفاتورة:</label> <span class="data-no"></span></div>
                     <div class="info-item"><label>التاريخ:</label> <span class="data-date"></span></div>
-                    <div class="info-item"><label>السيد / السيديرة:</label> <span class="data-customer"></span></div>
+                    <div class="info-item"><label>السيد / السيدة:</label> <span class="data-customer"></span></div>
                     <div class="info-item"><label>الهاتف:</label> <span class="data-phone"></span></div>
                     <div class="info-item"><label>العنوان:</label> <span class="data-address"></span></div>
-                    <div class="info-item"><label>الرصيد:</label> <span class="data-balance"></span></div>
+                    <div class="info-item"><label>العملة:</label> <span class="data-currency"></span></div>
                 </div>
 
                 <table class="invoice-table">
@@ -463,6 +464,7 @@
             const template = document.getElementById('page-template');
             container.innerHTML = '';
 
+            const currencySymbol = data.currency === 'USD' ? '$' : 'د.ع';
             const itemsPerPage = 12; // Adjusted based on row height vs print-height
             const totalPages = Math.ceil(data.items.length / itemsPerPage) || 1;
 
@@ -476,7 +478,7 @@
                 page.querySelector('.data-customer').textContent = data.customer.name;
                 page.querySelector('.data-phone').textContent = data.customer.phone;
                 page.querySelector('.data-address').textContent = data.customer.address;
-                page.querySelector('.data-balance').textContent = data.totals.net;
+                page.querySelector('.data-currency').textContent = data.currency === 'USD' ? 'دولار امريكي' : 'دينار عراقي';
 
                 // Fill Items
                 const tbody = page.querySelector('.data-items');
@@ -488,8 +490,8 @@
                         <td class="col-no">${item.no}</td>
                         <td class="col-item">${item.name}</td>
                         <td class="col-qty">${item.qty}</td>
-                        <td class="col-price">${Number(item.price).toLocaleString()}</td>
-                        <td class="col-total">${Number(item.total).toLocaleString()}</td>
+                        <td class="col-price">${Number(item.price).toLocaleString()} ${currencySymbol}</td>
+                        <td class="col-total">${Number(item.total).toLocaleString()} ${currencySymbol}</td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -504,10 +506,10 @@
                 // Fill Footer (only on last page)
                 if (i === totalPages - 1) {
                     page.querySelector('.data-words').textContent = data.totals.words;
-                    page.querySelector('.data-subtotal').textContent = Number(data.totals.subtotal).toLocaleString();
-                    page.querySelector('.data-discount').textContent = Number(data.totals.discount).toLocaleString();
-                    page.querySelector('.data-paid').textContent = Number(data.totals.paid).toLocaleString();
-                    page.querySelector('.data-remaining').textContent = Number(data.totals.remaining).toLocaleString();
+                    page.querySelector('.data-subtotal').textContent = Number(data.totals.subtotal).toLocaleString() + ' ' + currencySymbol;
+                    page.querySelector('.data-discount').textContent = Number(data.totals.discount).toLocaleString() + ' ' + currencySymbol;
+                    page.querySelector('.data-paid').textContent = Number(data.totals.paid).toLocaleString() + ' ' + currencySymbol;
+                    page.querySelector('.data-remaining').textContent = Number(data.totals.remaining).toLocaleString() + ' ' + currencySymbol;
                 } else {
                     page.querySelector('.summary-grid').style.visibility = 'hidden';
                 }

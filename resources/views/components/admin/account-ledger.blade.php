@@ -92,6 +92,12 @@ new class extends Component {
                                     {{ $entry->description }}
                                     @if($entry->ref_id)
                                         <span class="badge bg-light text-dark ms-1">#{{ $entry->ref_id }}</span>
+                                        @php $ref = $entry->reference; @endphp
+                                        @if($ref && !empty($ref->notes))
+                                            <div class="mt-1 small text-muted">
+                                                <i class="ri-information-line align-bottom me-1"></i> {{ $ref->notes }}
+                                            </div>
+                                        @endif
                                     @endif
                                 </td>
                                 <td class="text-end text-success">

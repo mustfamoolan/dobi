@@ -12,7 +12,7 @@ new class extends Component {
     #[Url]
     public $search = '';
     public $customerId;
-    public $name, $phone, $address, $opening_balance = 0, $currency = 'IQD';
+    public $name, $phone, $address, $opening_balance_iqd = 0, $opening_balance_usd = 0;
     public $isEditMode = false;
 
     protected $paginationTheme = 'bootstrap';
@@ -24,7 +24,7 @@ new class extends Component {
 
     public function openModal()
     {
-        $this->reset(['name', 'phone', 'address', 'opening_balance', 'customerId', 'isEditMode']);
+        $this->reset(['name', 'phone', 'address', 'opening_balance_iqd', 'opening_balance_usd', 'customerId', 'isEditMode']);
         $this->dispatch('open-customer-modal');
     }
 
@@ -35,8 +35,8 @@ new class extends Component {
         $this->name = $customer->name;
         $this->phone = $customer->phone;
         $this->address = $customer->address;
-        $this->opening_balance = $customer->opening_balance;
-        $this->currency = $customer->currency;
+        $this->opening_balance_iqd = $customer->opening_balance_iqd;
+        $this->opening_balance_usd = $customer->opening_balance_usd;
         $this->isEditMode = true;
         $this->dispatch('open-customer-modal');
     }
@@ -46,16 +46,16 @@ new class extends Component {
         $this->validate([
             'name' => 'required|string|max:255',
             'phone' => 'nullable|string|max:20',
-            'opening_balance' => 'required|numeric',
-            'currency' => 'required|string|max:10',
+            'opening_balance_iqd' => 'required|numeric',
+            'opening_balance_usd' => 'required|numeric',
         ]);
 
         $data = [
             'name' => $this->name,
             'phone' => $this->phone,
             'address' => $this->address,
-            'opening_balance' => $this->opening_balance,
-            'currency' => $this->currency,
+            'opening_balance_iqd' => $this->opening_balance_iqd,
+            'opening_balance_usd' => $this->opening_balance_usd,
             'updated_by' => Auth::id(),
         ];
 
@@ -66,17 +66,32 @@ new class extends Component {
             $data['created_by'] = Auth::id();
             $customer = Customer::create($data);
 
-            // Create Opening Balance Entry in Ledger
-            if ($this->opening_balance != 0) {
+            // Create Opening Balance Entry in Ledger (IQD)
+            if ($this->opening_balance_iqd != 0) {
                 \App\Models\CustomerLedger::create([
                     'customer_id' => $customer->id,
                     'date' => now(),
                     'type' => 'opening_balance',
-                    'description' => __('Opening Balance'),
-                    'debit' => $this->opening_balance > 0 ? $this->opening_balance : 0,
-                    'credit' => $this->opening_balance < 0 ? abs($this->opening_balance) : 0,
-                    'balance' => $this->opening_balance,
-                    'currency' => $this->currency,
+                    'description' => __('Opening Balance') . ' (IQD)',
+                    'debit' => $this->opening_balance_iqd > 0 ? $this->opening_balance_iqd : 0,
+                    'credit' => $this->opening_balance_iqd < 0 ? abs($this->opening_balance_iqd) : 0,
+                    'balance' => $this->opening_balance_iqd,
+                    'currency' => 'IQD',
+                    'created_by' => Auth::id(),
+                ]);
+            }
+
+            // Create Opening Balance Entry in Ledger (USD)
+            if ($this->opening_balance_usd != 0) {
+                \App\Models\CustomerLedger::create([
+                    'customer_id' => $customer->id,
+                    'date' => now(),
+                    'type' => 'opening_balance',
+                    'description' => __('Opening Balance') . ' (USD)',
+                    'debit' => $this->opening_balance_usd > 0 ? $this->opening_balance_usd : 0,
+                    'credit' => $this->opening_balance_usd < 0 ? abs($this->opening_balance_usd) : 0,
+                    'balance' => $this->opening_balance_usd,
+                    'currency' => 'USD',
                     'created_by' => Auth::id(),
                 ]);
             }
@@ -130,8 +145,8 @@ new class extends Component {
                         <tr>
                             <th>{{ __('Name') }}</th>
                             <th>{{ __('Phone') }}</th>
-                            <th>{{ __('Opening Balance') }}</th>
-                            <th>{{ __('Currency') }}</th>
+                            <th>{{ __('Balance IQD') }}</th>
+                            <th>{{ __('Balance USD') }}</th>
                             <th>{{ __('Created At') }}</th>
                             <th class="text-end">{{ __('Action') }}</th>
                         </tr>
@@ -154,8 +169,8 @@ new class extends Component {
                                     </div>
                                 </td>
                                 <td>{{ $customer->phone }}</td>
-                                <td>{{ number_format($customer->opening_balance, 0) }}</td>
-                                <td>{{ $customer->currency }}</td>
+                                <td><span class="badge bg-primary-subtle text-primary">{{ number_format($customer->opening_balance_iqd, 0) }} IQD</span></td>
+                                <td><span class="badge bg-success-subtle text-success">{{ number_format($customer->opening_balance_usd, 2) }} USD</span></td>
                                 <td>{{ $customer->created_at->format('Y-m-d') }}</td>
                                 <td class="text-end">
                                     <a href="{{ route('admin.customers.ledger', $customer->id) }}"
@@ -209,17 +224,16 @@ new class extends Component {
                         </div>
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">{{ __('Opening Balance') }}</label>
-                                <input type="number" step="1" wire:model="opening_balance"
-                                    class="form-control @error('opening_balance') is-invalid @enderror">
-                                @error('opening_balance') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                                <label class="form-label">{{ __('Opening Balance') }} (IQD)</label>
+                                <input type="number" step="1" wire:model="opening_balance_iqd"
+                                    class="form-control @error('opening_balance_iqd') is-invalid @enderror">
+                                @error('opening_balance_iqd') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">{{ __('Currency') }}</label>
-                                <select wire:model="currency" class="form-select">
-                                    <option value="IQD">IQD</option>
-                                    <option value="USD">USD</option>
-                                </select>
+                                <label class="form-label">{{ __('Opening Balance') }} (USD)</label>
+                                <input type="number" step="0.01" wire:model="opening_balance_usd"
+                                    class="form-control @error('opening_balance_usd') is-invalid @enderror">
+                                @error('opening_balance_usd') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
                         </div>
                     </div>

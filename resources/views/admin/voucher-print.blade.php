@@ -190,7 +190,7 @@
         <div class="amount-section">
             <span class="label">{{ __('Amount') }}</span>
             <div class="amount-box">
-                {{ number_format($voucher->amount, 0) }} {{ $voucher->currency }}
+                {{ number_format($voucher->amount, $voucher->currency === 'USD' ? 2 : 0) }} {{ $voucher->currency }}
             </div>
             @if($voucher->currency != 'USD')
                 <div style="margin-top: 10px; font-size: 12px; color: #777;">

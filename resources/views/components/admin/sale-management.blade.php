@@ -36,6 +36,7 @@ new class extends Component {
     public $exchange_rate;
     public $notes;
     public $payment_status = 'pending';
+    public $discount = 0;
     public $financial_account_id;
     public $items = []; // [{product_id, name, qty, price, subtotal}]
     public $viewingSale = null;
@@ -63,7 +64,7 @@ new class extends Component {
 
     public function openCreateModal()
     {
-        $this->reset(['customer_id', 'warehouse_id', 'employee_id', 'items', 'notes', 'selected_product_id', 'item_qty', 'item_price', 'payment_status']);
+        $this->reset(['customer_id', 'warehouse_id', 'employee_id', 'items', 'notes', 'selected_product_id', 'item_qty', 'item_price', 'payment_status', 'discount']);
         $this->date = now()->format('Y-m-d');
         // Default to first warehouse
         $this->warehouse_id = Warehouse::first()->id ?? null;
@@ -77,7 +78,54 @@ new class extends Component {
     {
         if ($id) {
             $product = Product::find($id);
-            $this->item_price = $product->price;
+            $price_iqd = $product->price;
+            
+            if ($this->currency === 'USD' && $this->exchange_rate > 0) {
+                $this->item_price = round($price_iqd / $this->exchange_rate, 2);
+            } else {
+                $this->item_price = $price_iqd;
+            }
+        }
+    }
+
+    public function updatedCurrency()
+    {
+        $this->convertPrices();
+    }
+
+    public function updatedExchangeRate()
+    {
+        $this->convertPrices();
+    }
+
+    protected function convertPrices()
+    {
+        // Re-calculate item_price if product is selected
+        if ($this->selected_product_id) {
+            $product = Product::find($this->selected_product_id);
+            if ($product) {
+                $price_iqd = $product->price;
+                if ($this->currency === 'USD' && $this->exchange_rate > 0) {
+                    $this->item_price = round($price_iqd / $this->exchange_rate, 2);
+                } else {
+                    $this->item_price = $price_iqd;
+                }
+            }
+        }
+
+        // Convert existing items in the list
+        foreach ($this->items as $index => $item) {
+            $product = Product::find($item['product_id']);
+            if ($product) {
+                $price_iqd = $product->price;
+                if ($this->currency === 'USD' && $this->exchange_rate > 0) {
+                    $new_price = round($price_iqd / $this->exchange_rate, 2);
+                } else {
+                    $new_price = $price_iqd;
+                }
+                $this->items[$index]['price'] = $new_price;
+                $this->items[$index]['subtotal'] = $this->items[$index]['qty'] * $new_price;
+            }
         }
     }
 
@@ -129,6 +177,11 @@ new class extends Component {
         return collect($this->items)->sum('subtotal');
     }
 
+    public function getGrandTotalProperty()
+    {
+        return $this->total - (float)$this->discount;
+    }
+
     public function save()
     {
         $this->validate([
@@ -139,6 +192,7 @@ new class extends Component {
             'currency' => 'required|string',
             'exchange_rate' => 'required|numeric|min:1',
             'items' => 'required|array|min:1',
+            'discount' => 'required|numeric|min:0',
             'financial_account_id' => 'required_if:payment_status,paid',
         ]);
 
@@ -158,7 +212,8 @@ new class extends Component {
                 'currency' => $this->currency,
                 'exchange_rate' => $this->exchange_rate,
                 'total' => $total,
-                'grand_total' => $total,
+                'discount' => $this->discount,
+                'grand_total' => $this->grandTotal,
                 'type' => $this->type,
                 'payment_status' => $this->payment_status,
                 'notes' => $this->notes,
@@ -206,9 +261,9 @@ new class extends Component {
                     'description' => 'Sale Invoice #' . $sale->id,
                     'currency' => $this->currency,
                     'exchange_rate' => $this->exchange_rate,
-                    'debit' => $total,
+                    'debit' => $this->grandTotal,
                     'credit' => 0,
-                    'balance' => $total,
+                    'balance' => $this->grandTotal,
                     'ref_type' => 'sale',
                     'ref_id' => $sale->id,
                     'created_by' => Auth::id(),
@@ -218,7 +273,7 @@ new class extends Component {
                 if ($this->employee_id) {
                     $employee = Employee::find($this->employee_id);
                     if ($employee && $employee->commission_rate > 0) {
-                        $commissionAmount = $total * ($employee->commission_rate / 100);
+                        $commissionAmount = $this->grandTotal * ($employee->commission_rate / 100);
 
                         EmployeeLedger::create([
                             'employee_id' => $this->employee_id,
@@ -240,7 +295,7 @@ new class extends Component {
                 // 5. If Paid, record in Treasury and credit customer
                 if ($this->payment_status === 'paid') {
                     $account = \App\Models\FinancialAccount::findOrFail($this->financial_account_id);
-                    $treasuryAmount = $total;
+                    $treasuryAmount = $this->grandTotal;
 
                     // Record in Treasury
                     \App\Models\AccountLedger::create([
@@ -265,7 +320,7 @@ new class extends Component {
                         'currency' => $this->currency,
                         'exchange_rate' => $this->exchange_rate,
                         'debit' => 0,
-                        'credit' => $total,
+                        'credit' => $this->grandTotal,
                         'balance' => 0,
                         'ref_type' => 'sale',
                         'ref_id' => $sale->id,
@@ -448,7 +503,7 @@ new class extends Component {
                                 <td>{{ $sale->date }}</td>
                                 <td>{{ $sale->customer->name }}</td>
                                 <td>
-                                    <strong>{{ number_format($sale->grand_total, 0) }} {{ $sale->currency }}</strong>
+                                    <strong>{{ number_format($sale->grand_total, $sale->currency === 'USD' ? 2 : 0) }} {{ $sale->currency }}</strong>
                                     @if($sale->currency !== 'IQD')
                                         <br><small
                                             class="text-muted">{{ number_format($sale->grand_total * $sale->exchange_rate, 0) }}
@@ -637,8 +692,8 @@ new class extends Component {
                                         <tr>
                                             <td>{{ $item['name'] }}</td>
                                             <td class="text-center">{{ $item['qty'] }}</td>
-                                            <td class="text-end">{{ number_format($item['price'], 0) }}</td>
-                                            <td class="text-end">{{ number_format($item['subtotal'], 0) }}</td>
+                                            <td class="text-end">{{ number_format($item['price'], $currency === 'USD' ? 2 : 0) }}</td>
+                                            <td class="text-end">{{ number_format($item['subtotal'], $currency === 'USD' ? 2 : 0) }}</td>
                                             <td class="text-center">
                                                 <button type="button" wire:click="removeItem({{ $index }})"
                                                     class="btn btn-link link-danger p-0 pt-1">
@@ -657,8 +712,19 @@ new class extends Component {
                                 <tfoot>
                                     <tr>
                                         <th colspan="3" class="text-end">{{ __('Total Amount') }}</th>
-                                        <th class="text-end text-primary fs-16">{{ number_format($this->total, 0) }}
+                                        <th class="text-end text-muted">{{ number_format($this->total, $currency === 'USD' ? 2 : 0) }}</th>
+                                        <th></th>
+                                    </tr>
+                                    <tr>
+                                        <th colspan="3" class="text-end">{{ __('Discount') }}</th>
+                                        <th class="text-end">
+                                            <input type="number" step="1" wire:model.live="discount" class="form-control form-control-sm text-end d-inline-block w-auto" style="width: 120px !important;">
                                         </th>
+                                        <th></th>
+                                    </tr>
+                                    <tr class="table-primary">
+                                        <th colspan="3" class="text-end">{{ __('Grand Total') }}</th>
+                                        <th class="text-end text-primary fs-16">{{ number_format($this->grandTotal, $currency === 'USD' ? 2 : 0) }}</th>
                                         <th></th>
                                     </tr>
                                 </tfoot>
@@ -777,8 +843,8 @@ new class extends Component {
                                                 <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ $item->product->sku ?? '' }}</td>
                                                 <td style="border: 1px solid #3491d1; padding: 1.5mm; font-size: 9.5pt;">{{ $item->product->name }}</td>
                                                 <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ number_format($item->qty, 0) }}</td>
-                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ number_format($item->price, 0) }}</td>
-                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ number_format($item->subtotal, 0) }}</td>
+                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ number_format($item->price, $viewingSale->currency === 'USD' ? 2 : 0) }}</td>
+                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ number_format($item->subtotal, $viewingSale->currency === 'USD' ? 2 : 0) }}</td>
                                             </tr>
                                         @endforeach
                                         @for($i = count($viewingSale->items); $i < 6; $i++)
@@ -796,7 +862,7 @@ new class extends Component {
 
                                 <!-- Final Words -->
                                 <div style="font-size: 10pt; font-weight: 700; text-align: center; margin-top: 3mm; margin-bottom: 2mm;">
-                                    {{ \App\Services\ArabicAmountToWords::translate($viewingSale->grand_total) }}
+                                    {{ \App\Services\ArabicAmountToWords::translate($viewingSale->grand_total, $viewingSale->currency) }}
                                 </div>
 
                                 <!-- Summary Row -->
@@ -804,10 +870,10 @@ new class extends Component {
                                     <div style="padding: 1.5mm 3mm; font-size: 9pt; font-weight: 700; text-align: center;">
                                     </div>
                                     <div style="background-color: #deeaf6; padding: 1.5mm; text-align: center; font-weight: 900; border-right: 2px solid #3491d1; border-left: 2px solid #3491d1;">
-                                        Total Dinar / المجموع
+                                        {{ $viewingSale->currency === 'USD' ? 'Total USD / المجموع' : 'Total Dinar / المجموع' }}
                                     </div>
                                     <div style="padding: 1.5mm; text-align: center; font-weight: 900; font-size: 11pt;">
-                                        {{ number_format($viewingSale->grand_total, 0) }}
+                                        {{ number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) }}
                                     </div>
                                 </div>
 

@@ -155,7 +155,7 @@ new class extends Component {
             \App\Models\AccountLedger::create([
                 'account_id' => $this->financial_account_id,
                 'date' => $this->date,
-                'description' => __('Voucher') . ' #' . $voucher->id . ' (' . $destinationLabel . ')',
+                'description' => __('Voucher') . ' #' . $voucher->id . ' (' . $destinationLabel . ')' . ($this->notes ? ': ' . $this->notes : ''),
                 'debit' => $this->type === 'receipt' ? $treasuryAmount : 0, // In
                 'credit' => $this->type === 'payment' ? $treasuryAmount : 0, // Out
                 'balance' => $account->current_balance + ($this->type === 'receipt' ? $treasuryAmount : -$treasuryAmount),

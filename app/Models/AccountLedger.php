@@ -27,4 +27,16 @@ class AccountLedger extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    public function getReferenceAttribute()
+    {
+        if ($this->ref_type === 'voucher') {
+            return Voucher::find($this->ref_id);
+        } elseif ($this->ref_type === 'sale') {
+            return Sale::find($this->ref_id);
+        } elseif ($this->ref_type === 'purchase') {
+            return Purchase::find($this->ref_id);
+        }
+        return null;
+    }
 }
