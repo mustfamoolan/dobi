@@ -37,6 +37,7 @@ new class extends Component {
     public $selected_product_id;
     public $item_qty = 1;
     public $item_cost = 0;
+    public $item_price = 0;
 
     protected $paginationTheme = 'bootstrap';
 
@@ -70,6 +71,7 @@ new class extends Component {
         if ($id) {
             $product = Product::find($id);
             $this->item_cost = $product->cost;
+            $this->item_price = $product->price;
         }
     }
 
@@ -79,6 +81,7 @@ new class extends Component {
             'selected_product_id' => 'required|exists:products,id',
             'item_qty' => 'required|numeric|min:0.001',
             'item_cost' => 'required|numeric|min:0',
+            'item_price' => 'required|numeric|min:0',
         ]);
 
         $product = Product::find($this->selected_product_id);
@@ -88,6 +91,7 @@ new class extends Component {
             'name' => $product->name,
             'qty' => $this->item_qty,
             'cost' => $this->item_cost,
+            'price' => $this->item_price,
             'subtotal' => $this->item_qty * $this->item_cost,
         ];
 
@@ -117,7 +121,8 @@ new class extends Component {
             'financial_account_id' => 'required_if:payment_status,paid',
         ]);
 
-        DB::transaction(function () {
+        try {
+            DB::beginTransaction();
             $total = $this->total;
 
             // 1. Create Purchase record
@@ -153,6 +158,12 @@ new class extends Component {
                     'ref_id' => $purchase->id,
                     'note' => 'Purchase Invoice #' . $purchase->id,
                     'created_by' => Auth::id(),
+                ]);
+
+                // Update Product Cost and Price
+                Product::where('id', $item['product_id'])->update([
+                    'cost' => $item['cost'],
+                    'price' => $item['price'],
                 ]);
             }
 
@@ -207,10 +218,15 @@ new class extends Component {
                     'created_by' => Auth::id(),
                 ]);
             }
-        });
 
-        session()->flash('success', 'Purchase invoice created successfully.');
-        $this->dispatch('close-purchase-modal');
+            DB::commit();
+            session()->flash('success', 'Purchase invoice created successfully.');
+            $this->dispatch('close-purchase-modal');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            session()->flash('error', 'Error saving purchase: ' . $e->getMessage());
+            return;
+        }
 
         // Notify Admins
         $admins = User::where('role', 'admin')->get();
@@ -282,6 +298,9 @@ new class extends Component {
         <div class="card-body">
             @if(session('success'))
                 <div class="alert alert-success mt-2">{{ session('success') }}</div>
+            @endif
+            @if(session('error'))
+                <div class="alert alert-danger mt-2">{{ session('error') }}</div>
             @endif
 
             <div class="table-responsive">
@@ -437,8 +456,12 @@ new class extends Component {
                                         <input type="number" step="1" wire:model="item_cost" class="form-control">
                                     </div>
                                     <div class="col-md-2">
-                                        <button type="button" wire:click="addItem" class="btn btn-info w-100">
-                                            <i class="ri-add-line me-1"></i> {{ __('Add') }}
+                                        <label class="form-label">{{ __('Price') }}</label>
+                                        <input type="number" step="1" wire:model="item_price" class="form-control">
+                                    </div>
+                                    <div class="col-md-1">
+                                        <button type="button" wire:click="addItem" class="btn btn-info w-100 p-2">
+                                            <i class="ri-add-line"></i>
                                         </button>
                                     </div>
                                 </div>
@@ -452,6 +475,7 @@ new class extends Component {
                                         <th>{{ __('Product') }}</th>
                                         <th class="text-center">{{ __('Qty') }}</th>
                                         <th class="text-end">{{ __('Cost') }}</th>
+                                        <th class="text-end">{{ __('Price') }}</th>
                                         <th class="text-end">{{ __('Subtotal') }}</th>
                                         <th class="text-center"></th>
                                     </tr>
@@ -462,6 +486,7 @@ new class extends Component {
                                             <td>{{ $item['name'] }}</td>
                                             <td class="text-center">{{ $item['qty'] }}</td>
                                             <td class="text-end">{{ number_format($item['cost'], 0) }}</td>
+                                            <td class="text-end">{{ number_format($item['price'], 0) }}</td>
                                             <td class="text-end">{{ number_format($item['subtotal'], 0) }}</td>
                                             <td class="text-center">
                                                 <button type="button" wire:click="removeItem({{ $index }})"
@@ -480,7 +505,7 @@ new class extends Component {
                                 </tbody>
                                 <tfoot>
                                     <tr>
-                                        <th colspan="3" class="text-end">{{ __('Total Amount') }}</th>
+                                        <th colspan="4" class="text-end">{{ __('Total Amount') }}</th>
                                         <th class="text-end text-primary fs-16">{{ number_format($this->total, 0) }}
                                         </th>
                                         <th></th>
