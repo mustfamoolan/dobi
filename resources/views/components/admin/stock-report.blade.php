@@ -9,18 +9,21 @@ new class extends Component {
 
     public function with()
     {
-        // Use a subquery to calculate current stock so we can filter by it in SQL
-        $products = Product::select('products.*')
+        // Use fromSub to allow standard WHERE filtering on calculated current_stock
+        // this avoids MySQL error: "Non-grouping field 'stock_alert' is used in HAVING clause"
+        $subquery = Product::select('products.*')
             ->selectSub(function ($query) {
                 $query->from('stock_movements')
-                    ->selectRaw('SUM(qty_in) - SUM(qty_out)')
+                    ->selectRaw('IFNULL(SUM(qty_in), 0) - IFNULL(SUM(qty_out), 0)')
                     ->whereColumn('product_id', 'products.id');
 
                 if ($this->warehouse_id) {
                     $query->where('warehouse_id', $this->warehouse_id);
                 }
-            }, 'current_stock')
-            ->havingRaw('current_stock <= stock_alert OR current_stock <= 5')
+            }, 'current_stock');
+
+        $products = Product::fromSub($subquery, 'products_with_stock')
+            ->whereRaw('current_stock <= stock_alert OR current_stock <= 5')
             ->with('category')
             ->get();
 
