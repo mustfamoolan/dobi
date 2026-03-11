@@ -41,7 +41,7 @@ new class extends Component {
         }
 
         if ($this->currency) {
-            $query->where('currency', $this->currency);
+            // We show all items but they will be converted in the view
         }
 
         $sales_all = (clone $query)->get();
@@ -101,78 +101,93 @@ new class extends Component {
                                 <option value="">{{ __('All Currencies') }}</option>
                                 <option value="USD">USD</option>
                                 <option value="IQD">IQD</option>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Unified Totals -->
-    <div class="row mt-4">
-        <div class="col-md-6">
-            <div class="card bg-primary-subtle border-0">
-                <div class="card-body py-3">
-                    <h6 class="text-primary mb-1">{{ __('Total Unified in USD') }} ($)</h6>
-                    <h4 class="mb-0">{{ number_format($total_usd, 2) }} $</h4>
-                    <small class="text-muted">{{ __('Converted using historical rates') }}</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card bg-info-subtle border-0">
-                <div class="card-body py-3">
-                    <h6 class="text-info mb-1">{{ __('Total Unified in IQD') }} (د.ع)</h6>
-                    <h4 class="mb-0">{{ number_format($total_iqd, 0) }} د.ع</h4>
-                    <small class="text-muted">{{ __('Converted using historical rates') }}</small>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mt-4">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-nowrap align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>#{{ $sale->id }}</th>
-                                    <th>{{ __('Date') }}</th>
-                                    <th>{{ __('Customer') }}</th>
-                                    <th>{{ __('Currency') }}</th>
-                                    <th>{{ __('Total Amount') }}</th>
-                                    <th>{{ __('Exchange Rate') }}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @forelse($sales as $sale)
-                                    <tr>
-                                        <td>#{{ $sale->id }}</td>
-                                        <td>{{ $sale->date }}</td>
-                                        <td>{{ $sale->customer->name ?? 'N/A' }}</td>
-                                        <td>
-                                            <span class="badge {{ $sale->currency == 'USD' ? 'bg-info' : 'bg-secondary' }}">
-                                                {{ $sale->currency }}
-                                            </span>
-                                        </td>
-                                        <td>{{ number_format($sale->grand_total, $sale->currency == 'USD' ? 2 : 0) }}</td>
-                                        <td>{{ number_format($sale->exchange_rate, 0) }}</td>
-                                    </tr>
-                                @empty
-                                    <tr>
-                                        <td colspan="6" class="text-center py-4">{{ __('No records found.') }}</td>
-                                    </tr>
-                                @endforelse
-                            </tbody>
-                        </table>
+                        </div>
                     </div>
                 </div>
-                @if($sales->hasPages())
-                    <div class="card-footer">
-                        {{ $sales->links() }}
+            </div>
+
+            <!-- Unified Totals -->
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card bg-primary-subtle border-0">
+                        <div class="card-body py-3">
+                            <h6 class="text-primary mb-1">{{ __('Total Unified in USD') }} ($)</h6>
+                            <h4 class="mb-0">{{ number_format($total_usd, 2) }} $</h4>
+                            <small class="text-muted">{{ __('Converted using historical rates') }}</small>
+                        </div>
                     </div>
-                @endif
+                </div>
+                <div class="col-md-6">
+                    <div class="card bg-info-subtle border-0">
+                        <div class="card-body py-3">
+                            <h6 class="text-info mb-1">{{ __('Total Unified in IQD') }} (د.ع)</h6>
+                            <h4 class="mb-0">{{ number_format($total_iqd, 0) }} د.ع</h4>
+                            <small class="text-muted">{{ __('Converted using historical rates') }}</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-nowrap align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>#{{ $sale->id }}</th>
+                                            <th>{{ __('Date') }}</th>
+                                            <th>{{ __('Customer') }}</th>
+                                            <th>{{ __('Currency') }}</th>
+                                            <th>{{ __('Total Amount') }}</th>
+                                            <th>{{ __('Exchange Rate') }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($sales as $sale)
+                                            @php
+                                                $originalCurrency = $sale->currency;
+                                                $rate = $sale->exchange_rate ?: 1;
+                                                $displayTotal = $sale->grand_total;
+
+                                                if ($this->currency === 'USD' && $originalCurrency === 'IQD') {
+                                                    $displayTotal /= $rate;
+                                                } elseif ($this->currency === 'IQD' && $originalCurrency === 'USD') {
+                                                    $displayTotal *= $rate;
+                                                }
+
+                                                $displayCurrency = $this->currency ?: $originalCurrency;
+                                            @endphp
+                                            <tr>
+                                                <td>#{{ $sale->id }}</td>
+                                                <td>{{ $sale->date }}</td>
+                                                <td>{{ $sale->customer->name ?? 'N/A' }}</td>
+                                                <td>
+                                                    <span
+                                                        class="badge {{ $originalCurrency == 'USD' ? 'bg-info' : 'bg-secondary' }}">
+                                                        {{ $originalCurrency }}
+                                                    </span>
+                                                </td>
+                                                <td>{{ number_format($displayTotal, $displayCurrency == 'USD' ? 2 : 0) }}
+                                                    {{ $displayCurrency == 'USD' ? '$' : 'د.ع' }}</td>
+                                                <td>{{ number_format($sale->exchange_rate, 0) }}</td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="6" class="text-center py-4">{{ __('No records found.') }}</td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        @if($sales->hasPages())
+                            <div class="card-footer">
+                                {{ $sales->links() }}
+                            </div>
+                        @endif
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-</div>

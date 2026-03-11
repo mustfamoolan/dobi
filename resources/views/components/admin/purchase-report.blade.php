@@ -41,7 +41,7 @@ new class extends Component {
         }
 
         if ($this->currency) {
-            $query->where('currency', $this->currency);
+            // Unify view: show all but they convert in Blade
         }
 
         $purchases_all = (clone $query)->get();
@@ -149,18 +149,31 @@ new class extends Component {
                             </thead>
                             <tbody>
                                 @forelse($purchases as $purchase)
+                                    @php
+                                        $originalCurrency = $purchase->currency;
+                                        $rate = $purchase->exchange_rate ?: 1;
+                                        $displayTotal = $purchase->grand_total;
+
+                                        if ($this->currency === 'USD' && $originalCurrency === 'IQD') {
+                                            $displayTotal /= $rate;
+                                        } elseif ($this->currency === 'IQD' && $originalCurrency === 'USD') {
+                                            $displayTotal *= $rate;
+                                        }
+
+                                        $displayCurrency = $this->currency ?: $originalCurrency;
+                                    @endphp
                                     <tr>
                                         <td>#{{ $purchase->id }}</td>
                                         <td>{{ $purchase->date }}</td>
                                         <td>{{ $purchase->supplier->name ?? 'N/A' }}</td>
                                         <td>
                                             <span
-                                                class="badge {{ $purchase->currency == 'USD' ? 'bg-info' : 'bg-secondary' }}">
-                                                {{ $purchase->currency }}
+                                                class="badge {{ $originalCurrency == 'USD' ? 'bg-info' : 'bg-secondary' }}">
+                                                {{ $originalCurrency }}
                                             </span>
                                         </td>
-                                        <td>{{ number_format($purchase->grand_total, $purchase->currency == 'USD' ? 2 : 0) }}
-                                        </td>
+                                        <td>{{ number_format($displayTotal, $displayCurrency == 'USD' ? 2 : 0) }}
+                                            {{ $displayCurrency == 'USD' ? '$' : 'د.ع' }}</td>
                                         <td>{{ number_format($purchase->exchange_rate, 0) }}</td>
                                     </tr>
                                 @empty

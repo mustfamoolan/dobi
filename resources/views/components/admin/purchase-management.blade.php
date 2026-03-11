@@ -160,10 +160,13 @@ new class extends Component {
                     'created_by' => Auth::id(),
                 ]);
 
-                // Update Product Cost and Price
+                // Update Product Cost and Price (Convert to IQD if purchase is in USD)
+                $costInIQD = ($this->currency === 'USD') ? ($item['cost'] * $this->exchange_rate) : $item['cost'];
+                $priceInIQD = ($this->currency === 'USD') ? ($item['price'] * $this->exchange_rate) : $item['price'];
+
                 Product::where('id', $item['product_id'])->update([
-                    'cost' => $item['cost'],
-                    'price' => $item['price'],
+                    'cost' => $costInIQD,
+                    'price' => $priceInIQD,
                 ]);
             }
 
