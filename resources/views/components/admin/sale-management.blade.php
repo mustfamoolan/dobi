@@ -41,6 +41,8 @@ new class extends Component {
     public $items = []; // [{product_id, name, qty, price, subtotal}]
     public $viewingSale = null;
     public $confirmingConvertId = null;
+    public $viewingPreviousBalance = 0;
+    public $previous_currency = 'USD';
 
     // Item Addition Fields
     public $selected_product_id;
@@ -90,12 +92,28 @@ new class extends Component {
 
     public function updatedCurrency()
     {
-        $this->convertPrices();
+        if ($this->currency !== $this->previous_currency) {
+            $this->convertPrices();
+            $this->previous_currency = $this->currency;
+        }
     }
 
     public function updatedExchangeRate()
     {
-        $this->convertPrices();
+        // When exchange rate changes, we don't automatically convert existing prices
+        // as they might have been manually set for those items.
+        // But we update the 'default' addition price.
+        if ($this->selected_product_id) {
+            $product = Product::find($this->selected_product_id);
+            if ($product) {
+                $price_iqd = $product->price;
+                if ($this->currency === 'USD' && $this->exchange_rate > 0) {
+                    $this->item_price = round($price_iqd / $this->exchange_rate, 2);
+                } else {
+                    $this->item_price = $price_iqd;
+                }
+            }
+        }
     }
 
     protected function convertPrices()
@@ -113,19 +131,34 @@ new class extends Component {
             }
         }
 
-        // Convert existing items in the list
+        // Convert existing items in the list based on the flip
         foreach ($this->items as $index => $item) {
-            $product = Product::find($item['product_id']);
-            if ($product) {
-                $price_iqd = $product->price;
-                if ($this->currency === 'USD' && $this->exchange_rate > 0) {
-                    $new_price = round($price_iqd / $this->exchange_rate, 2);
-                } else {
-                    $new_price = $price_iqd;
-                }
-                $this->items[$index]['price'] = $new_price;
-                $this->items[$index]['subtotal'] = $this->items[$index]['qty'] * $new_price;
+            $current_price = $item['price'];
+            
+            if ($this->currency === 'USD') {
+                // Switched IQD -> USD
+                $new_price = round($current_price / $this->exchange_rate, 2);
+            } else {
+                // Switched USD -> IQD
+                $new_price = round($current_price * $this->exchange_rate, 0);
             }
+
+            $this->items[$index]['price'] = $new_price;
+            $this->items[$index]['subtotal'] = $this->items[$index]['qty'] * $new_price;
+        }
+    }
+
+    public function updatedItems($value, $key)
+    {
+        // $key looks like "0.qty" or "2.price"
+        if (str_contains($key, '.qty') || str_contains($key, '.price')) {
+            $parts = explode('.', $key);
+            $index = $parts[0];
+            
+            $qty = (float)($this->items[$index]['qty'] ?: 0);
+            $price = (float)($this->items[$index]['price'] ?: 0);
+            
+            $this->items[$index]['subtotal'] = $qty * $price;
         }
     }
 
@@ -192,8 +225,13 @@ new class extends Component {
             'currency' => 'required|string',
             'exchange_rate' => 'required|numeric|min:1',
             'items' => 'required|array|min:1',
+            'items.*.qty' => 'required|numeric|min:0.001',
+            'items.*.price' => 'required|numeric|min:0',
             'discount' => 'required|numeric|min:0',
             'financial_account_id' => 'required_if:payment_status,paid',
+        ], [
+            'items.*.qty.required' => __('Quantity is required for all items.'),
+            'items.*.price.required' => __('Price is required for all items.'),
         ]);
 
         $saleId = null; // will be set inside transaction
@@ -480,6 +518,7 @@ new class extends Component {
     public function viewSale($id)
     {
         $this->viewingSale = Sale::with(['customer', 'items.product', 'creator'])->findOrFail($id);
+        $this->viewingPreviousBalance = $this->viewingSale->customer->getBalanceBeforeSale($this->viewingSale->id, $this->viewingSale->currency);
         $this->dispatch('open-view-modal');
     }
 
@@ -626,6 +665,16 @@ new class extends Component {
                 </div>
                 <form wire:submit.prevent="save">
                     <div class="modal-body">
+                        @if($errors->any())
+                            <div class="alert alert-danger">
+                                <ul class="mb-0">
+                                    @foreach($errors->all() as $error)
+                                        <li>{{ $error }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+
                         <div class="row mb-4">
                             <div class="col-md-3">
                                 <label class="form-label">{{ __('Date') }}</label>
@@ -722,7 +771,7 @@ new class extends Component {
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">{{ __('Price') }}</label>
-                                        <input type="number" step="1" wire:model="item_price" class="form-control">
+                                        <input type="number" step="{{ $currency === 'USD' ? '0.01' : '1' }}" wire:model="item_price" class="form-control">
                                     </div>
                                     <div class="col-md-2">
                                         <button type="button" wire:click="addItem" class="btn btn-info w-100">
@@ -746,10 +795,14 @@ new class extends Component {
                                 </thead>
                                 <tbody>
                                     @forelse($items as $index => $item)
-                                        <tr>
+                                        <tr wire:key="sale-item-{{ $index }}">
                                             <td>{{ $item['name'] }}</td>
-                                            <td class="text-center">{{ $item['qty'] }}</td>
-                                            <td class="text-end">{{ number_format($item['price'], $currency === 'USD' ? 2 : 0) }}</td>
+                                            <td class="text-center" style="width: 100px;">
+                                                <input type="number" step="1" wire:model.live="items.{{ $index }}.qty" class="form-control form-control-sm text-center">
+                                            </td>
+                                            <td class="text-end" style="width: 150px;">
+                                                <input type="number" step="{{ $currency === 'USD' ? '0.01' : '1' }}" wire:model.live="items.{{ $index }}.price" class="form-control form-control-sm text-end">
+                                            </td>
                                             <td class="text-end">{{ number_format($item['subtotal'], $currency === 'USD' ? 2 : 0) }}</td>
                                             <td class="text-center">
                                                 <button type="button" wire:click="removeItem({{ $index }})"
@@ -794,6 +847,7 @@ new class extends Component {
                         </div>
                     </div>
                     <div class="modal-footer">
+                        @error('items') <div class="text-danger me-auto small">{{ $message }}</div> @enderror
                         <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
                         <button type="submit" class="btn btn-primary" {{ empty($items) ? 'disabled' : '' }}>
                             {{ __('Save') }}
@@ -932,7 +986,6 @@ new class extends Component {
                             font-size: 9pt;
                             color: #32267d;
                             overflow: hidden;
-                            white-space: nowrap;
                             text-align: center;
                         }
 
@@ -1008,7 +1061,7 @@ new class extends Component {
                     <div class="invoice-preview-container">
                         @if($viewingSale)
                             @php
-                                $typeLabel = $viewingSale->type == 'invoice' ? 'فاتورة مبيعات' : ($viewingSale->type == 'quotation' ? 'عرض سعر' : 'فاتورة برو فورما');
+                                $typeLabel = $viewingSale->type == 'invoice' ? 'Invoice' : ($viewingSale->type == 'quotation' ? 'Quotation' : 'Proforma');
                                 $currencySymbol = $viewingSale->currency === 'USD' ? '$' : 'د.ع';
                             @endphp
                             <div class="preview-page">
@@ -1016,12 +1069,12 @@ new class extends Component {
                                 <div class="preview-print-area">
                                     <div class="preview-info-grid">
                                         <div class="preview-info-item"><label>رقم الفاتورة:</label> <span>{{ $viewingSale->id }}</span></div>
-                                        <div class="preview-info-item"><label>التاريخ:</label> <span>{{ $viewingSale->date }}</span></div>
-                                        <div class="preview-info-item"><label>السيد / السيدة:</label> <span>{{ $viewingSale->customer->name }}</span></div>
-                                        <div class="preview-info-item"><label>نوع الفاتورة:</label> <span>{{ $typeLabel }}</span></div>
+                                        <div class="preview-info-item"><label>الاسم:</label> <span>{{ $viewingSale->customer->name }}</span></div>
                                         <div class="preview-info-item"><label>الهاتف:</label> <span>{{ $viewingSale->customer->phone }}</span></div>
                                         <div class="preview-info-item"><label>العنوان:</label> <span>{{ $viewingSale->customer->address }}</span></div>
+                                        <div class="preview-info-item"><label>التاريخ:</label> <span>{{ $viewingSale->date }}</span></div>
                                         <div class="preview-info-item"><label>العملة:</label> <span>{{ $viewingSale->currency === 'USD' ? 'دولار امريكي' : 'دينار عراقي' }}</span></div>
+                                        <div class="preview-info-item"><label>نوع الفاتورة:</label> <span>{{ $typeLabel }}</span></div>
                                     </div>
 
                                     <table class="preview-table">
@@ -1078,11 +1131,11 @@ new class extends Component {
                                         </div>
                                         <div class="preview-summary-cell">
                                             <span class="preview-summary-label">الرصيد السابق</span>
-                                            <span class="preview-summary-value">---</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingPreviousBalance, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-summary-cell">
-                                            <span class="preview-summary-label">الرصيد المتبقي</span>
-                                            <span class="preview-summary-value">{{ $viewingSale->payment_status === 'paid' ? '0' : number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) . ' ' . $currencySymbol }}</span>
+                                            <span class="preview-summary-label">الرصيد الكلي</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingPreviousBalance + $viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-total-in-words">
                                             {{ \App\Services\ArabicAmountToWords::translate($viewingSale->grand_total, $viewingSale->currency) }}

@@ -2,7 +2,12 @@
     $model = $type == 'sale' ? \App\Models\Sale::with(['customer', 'items.product'])->find($id) : \App\Models\Purchase::with(['supplier', 'items.product'])->find($id);
     $setting = \App\Models\AppSetting::first();
 
-    $typeLabel = $type == 'sale' ? ($model->type == 'invoice' ? 'فاتورة مبيعات' : ($model->type == 'quotation' ? 'عرض سعر' : 'فاتورة برو فورما')) : 'فاتورة مشتريات';
+    $typeLabel = $type == 'sale' ? ($model->type == 'invoice' ? 'Invoice' : ($model->type == 'quotation' ? 'Quotation' : 'Proforma')) : 'Purchase Invoice';
+
+    $previousBalance = 0;
+    if ($type == 'sale' && $model->customer) {
+        $previousBalance = $model->customer->getBalanceBeforeSale($model->id, $model->currency);
+    }
 
     // Transform model to JSON for the JS printer
     $invoiceData = [
@@ -30,6 +35,8 @@
             'extra' => $model->tax ?? 0,
             'net' => $model->grand_total,
             'paid' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? $model->grand_total : 0,
+            'previous' => $previousBalance,
+            'total_balance' => $previousBalance + $model->grand_total,
             'remaining' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? 0 : $model->grand_total,
             'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total, $model->currency),
             'notes' => $model->notes
@@ -232,7 +239,9 @@
             font-size: 9pt;
             color: #32267d;
             overflow: hidden;
-            white-space: nowrap;
+            /* Allow text to wrap for Arabic names */
+            white-space: normal;
+            word-break: break-word;
         }
 
         .invoice-table tbody tr:last-child td {
@@ -415,12 +424,12 @@
                 <!-- Info Grid (Two rows) -->
                 <div class="info-grid">
                     <div class="info-item"><label>رقم الفاتورة:</label> <span class="data-no"></span></div>
-                    <div class="info-item"><label>التاريخ:</label> <span class="data-date"></span></div>
-                    <div class="info-item"><label>السيد / السيدة:</label> <span class="data-customer"></span></div>
-                    <div class="info-item"><label>نوع الفاتورة:</label> <span class="data-type"></span></div>
+                    <div class="info-item"><label>الاسم:</label> <span class="data-customer"></span></div>
                     <div class="info-item"><label>الهاتف:</label> <span class="data-phone"></span></div>
                     <div class="info-item"><label>العنوان:</label> <span class="data-address"></span></div>
+                    <div class="info-item"><label>التاريخ:</label> <span class="data-date"></span></div>
                     <div class="info-item"><label>العملة:</label> <span class="data-currency"></span></div>
+                    <div class="info-item"><label>نوع الفاتورة:</label> <span class="data-type"></span></div>
                 </div>
 
                 <table class="invoice-table">
@@ -460,11 +469,11 @@
                     </div>
                     <div class="summary-cell">
                         <span class="summary-label">الرصيد السابق</span>
-                        <span class="summary-value">---</span>
+                        <span class="summary-value data-previous">---</span>
                     </div>
                     <div class="summary-cell">
-                        <span class="summary-label">الرصيد المتبقي</span>
-                        <span class="summary-value data-remaining">0</span>
+                        <span class="summary-label">الرصيد الكلي</span>
+                        <span class="summary-value data-total-balance">0</span>
                     </div>
                     <div class="total-in-words data-words"></div>
                 </div>
@@ -531,7 +540,8 @@
                     page.querySelector('.data-subtotal').textContent = Number(data.totals.subtotal).toLocaleString() + ' ' + currencySymbol;
                     page.querySelector('.data-discount').textContent = Number(data.totals.discount).toLocaleString() + ' ' + currencySymbol;
                     page.querySelector('.data-paid').textContent = Number(data.totals.paid).toLocaleString() + ' ' + currencySymbol;
-                    page.querySelector('.data-remaining').textContent = Number(data.totals.remaining).toLocaleString() + ' ' + currencySymbol;
+                    page.querySelector('.data-previous').textContent = Number(data.totals.previous).toLocaleString() + ' ' + currencySymbol;
+                    page.querySelector('.data-total-balance').textContent = Number(data.totals.total_balance).toLocaleString() + ' ' + currencySymbol;
                 } else {
                     page.querySelector('.summary-grid').style.visibility = 'hidden';
                 }
