@@ -2,9 +2,12 @@
     $model = $type == 'sale' ? \App\Models\Sale::with(['customer', 'items.product'])->find($id) : \App\Models\Purchase::with(['supplier', 'items.product'])->find($id);
     $setting = \App\Models\AppSetting::first();
 
+    $typeLabel = $type == 'sale' ? ($model->type == 'invoice' ? 'فاتورة مبيعات' : ($model->type == 'quotation' ? 'عرض سعر' : 'فاتورة برو فورما')) : 'فاتورة مشتريات';
+
     // Transform model to JSON for the JS printer
     $invoiceData = [
         'id' => $model->id,
+        'type_label' => $typeLabel,
         'date' => $model->date,
         'customer' => [
             'name' => $model->customer->name ?? $model->supplier->name ?? '',
@@ -28,7 +31,8 @@
             'net' => $model->grand_total,
             'paid' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? $model->grand_total : 0,
             'remaining' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? 0 : $model->grand_total,
-            'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total, $model->currency)
+            'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total, $model->currency),
+            'notes' => $model->notes
         ]
     ];
 @endphp
@@ -145,7 +149,7 @@
         /* Top Info Grid */
         .info-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
             gap: 3mm;
             margin-bottom: 3mm;
             font-weight: bold;
@@ -173,6 +177,8 @@
         .info-item span {
             color: #32267d;
             font-weight: 900;
+            unicode-bidi: plaintext;
+            text-align: right;
         }
 
         /* Table Styling */
@@ -411,6 +417,7 @@
                     <div class="info-item"><label>رقم الفاتورة:</label> <span class="data-no"></span></div>
                     <div class="info-item"><label>التاريخ:</label> <span class="data-date"></span></div>
                     <div class="info-item"><label>السيد / السيدة:</label> <span class="data-customer"></span></div>
+                    <div class="info-item"><label>نوع الفاتورة:</label> <span class="data-type"></span></div>
                     <div class="info-item"><label>الهاتف:</label> <span class="data-phone"></span></div>
                     <div class="info-item"><label>العنوان:</label> <span class="data-address"></span></div>
                     <div class="info-item"><label>العملة:</label> <span class="data-currency"></span></div>
@@ -430,6 +437,13 @@
                         <!-- Items injected here -->
                     </tbody>
                 </table>
+
+                <!-- Notes Section -->
+                <div class="notes-container"
+                    style="display: none; margin-top: 4mm; border: 1px solid #32267d; border-radius: 1mm; padding: 2mm; background: #f3f1fb; font-size: 9pt;">
+                    <div style="font-weight: bold; color: #32267d; margin-bottom: 1mm;">الملاحظات / Notes:</div>
+                    <div class="data-notes" style="color: #32267d; white-space: pre-wrap;"></div>
+                </div>
 
                 <div class="summary-grid">
                     <div class="summary-cell">
@@ -476,6 +490,7 @@
                 page.querySelector('.data-no').textContent = data.id;
                 page.querySelector('.data-date').textContent = data.date;
                 page.querySelector('.data-customer').textContent = data.customer.name;
+                page.querySelector('.data-type').textContent = data.type_label;
                 page.querySelector('.data-phone').textContent = data.customer.phone;
                 page.querySelector('.data-address').textContent = data.customer.address;
                 page.querySelector('.data-currency').textContent = data.currency === 'USD' ? 'دولار امريكي' : 'دينار عراقي';
@@ -495,6 +510,13 @@
                     `;
                     tbody.appendChild(tr);
                 });
+
+                // Fill Notes (only on last page)
+                if (i === totalPages - 1 && data.totals.notes) {
+                    const notesContainer = page.querySelector('.notes-container');
+                    notesContainer.style.display = 'block';
+                    page.querySelector('.data-notes').textContent = data.totals.notes;
+                }
 
                 // Pad empty rows to keep footer at bottom of print-area
                 for (let p = slice.length; p < itemsPerPage; p++) {
@@ -594,15 +616,15 @@
 
             for (let i = 0; i < pages.length; i++) {
                 const canvas = await html2canvas(pages[i], {
-                    scale: 2,
+                    scale: 3,
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
                     backgroundColor: '#ffffff'
                 });
-                const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                const imgData = canvas.toDataURL('image/jpeg', 1.0);
                 if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+                pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
             }
 
             document.body.classList.remove('download-mode');

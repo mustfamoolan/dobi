@@ -36,5 +36,22 @@ else
     echo "✗ Warning: Storage link may not be working correctly"
 fi
 
+# Put application in maintenance mode
+echo "Putting application in maintenance mode..."
+php artisan down || true
+
+# Database migrations
+echo "Running database migrations..."
+php artisan migrate --force
+
+# Optimize and Cache
+echo "Optimizing and caching..."
+php artisan optimize
+php artisan view:cache
+
+# Bring application up
+echo "Bringing application online..."
+php artisan up
+
 echo "Deployment completed!"
 

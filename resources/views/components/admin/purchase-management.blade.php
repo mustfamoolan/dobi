@@ -318,6 +318,7 @@ new class extends Component {
                     <tbody>
                         @foreach($purchases as $purchase)
                             <tr>
+                                <td>{{ $purchase->id }}</td>
                                 <td>{{ $purchase->date }}</td>
                                 <td>{{ $purchase->supplier->name }}</td>
                                 <td>

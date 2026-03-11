@@ -113,7 +113,28 @@ new class extends Component {
         $customers = Customer::where(function ($query) {
             $query->where('name', 'like', '%' . $this->search . '%')
                 ->orWhere('phone', 'like', '%' . $this->search . '%');
-        })->latest()->paginate(10);
+        })
+        ->addSelect([
+            'total_debit_iqd' => \App\Models\CustomerLedger::whereColumn('customer_id', 'customers.id')
+                ->where('currency', 'IQD')
+                ->selectRaw('SUM(debit)'),
+            'total_credit_iqd' => \App\Models\CustomerLedger::whereColumn('customer_id', 'customers.id')
+                ->where('currency', 'IQD')
+                ->selectRaw('SUM(credit)'),
+            'balance_iqd' => \App\Models\CustomerLedger::whereColumn('customer_id', 'customers.id')
+                ->where('currency', 'IQD')
+                ->selectRaw('SUM(debit - credit)'),
+            'total_debit_usd' => \App\Models\CustomerLedger::whereColumn('customer_id', 'customers.id')
+                ->where('currency', 'USD')
+                ->selectRaw('SUM(debit)'),
+            'total_credit_usd' => \App\Models\CustomerLedger::whereColumn('customer_id', 'customers.id')
+                ->where('currency', 'USD')
+                ->selectRaw('SUM(credit)'),
+            'balance_usd' => \App\Models\CustomerLedger::whereColumn('customer_id', 'customers.id')
+                ->where('currency', 'USD')
+                ->selectRaw('SUM(debit - credit)'),
+        ])
+        ->latest()->paginate(10);
 
         return view('components.admin.customer-management', [
             'customers' => $customers
@@ -169,8 +190,24 @@ new class extends Component {
                                     </div>
                                 </td>
                                 <td>{{ $customer->phone }}</td>
-                                <td><span class="badge bg-primary-subtle text-primary">{{ number_format($customer->opening_balance_iqd, 0) }} IQD</span></td>
-                                <td><span class="badge bg-success-subtle text-success">{{ number_format($customer->opening_balance_usd, 2) }} USD</span></td>
+                                <td>
+                                    <div class="d-flex flex-column">
+                                        <span class="badge bg-primary-subtle text-primary mb-1">{{ number_format($customer->balance_iqd ?? 0, 0) }} IQD</span>
+                                        <small class="text-muted" style="font-size: 0.75rem;">
+                                            <span class="text-danger">{{ __('D') }}: {{ number_format($customer->total_debit_iqd ?? 0, 0) }}</span> | 
+                                            <span class="text-success">{{ __('C') }}: {{ number_format($customer->total_credit_iqd ?? 0, 0) }}</span>
+                                        </small>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-column">
+                                        <span class="badge bg-success-subtle text-success mb-1">{{ number_format($customer->balance_usd ?? 0, 2) }} USD</span>
+                                        <small class="text-muted" style="font-size: 0.75rem;">
+                                            <span class="text-danger">{{ __('D') }}: {{ number_format($customer->total_debit_usd ?? 0, 2) }}</span> | 
+                                            <span class="text-success">{{ __('C') }}: {{ number_format($customer->total_credit_usd ?? 0, 2) }}</span>
+                                        </small>
+                                    </div>
+                                </td>
                                 <td>{{ $customer->created_at->format('Y-m-d') }}</td>
                                 <td class="text-end">
                                     <a href="{{ route('admin.customers.ledger', $customer->id) }}"

@@ -327,6 +327,40 @@ new class extends Component {
                         'created_by' => Auth::id(),
                     ]);
                 }
+            } elseif ($this->type === 'proforma' && $this->payment_status === 'paid') {
+                // Handle Proforma payment (Credit customer, Debit Treasury)
+                $account = \App\Models\FinancialAccount::findOrFail($this->financial_account_id);
+                $treasuryAmount = $this->grandTotal;
+
+                // 1. Record in Treasury
+                \App\Models\AccountLedger::create([
+                    'account_id' => $this->financial_account_id,
+                    'date' => $this->date,
+                    'description' => __('Payment for Proforma') . ' #' . $sale->id,
+                    'debit' => $treasuryAmount,
+                    'credit' => 0,
+                    'balance' => $account->current_balance + $treasuryAmount,
+                    'ref_type' => 'sale',
+                    'ref_id' => $sale->id,
+                    'created_by' => Auth::id(),
+                ]);
+                $account->increment('current_balance', $treasuryAmount);
+
+                // 2. Record as Customer Credit (Liabiltiy - we owe them goods)
+                CustomerLedger::create([
+                    'customer_id' => $this->customer_id,
+                    'date' => $this->date,
+                    'type' => 'payment',
+                    'description' => __('Prepayment for Proforma') . ' #' . $sale->id,
+                    'currency' => $this->currency,
+                    'exchange_rate' => $this->exchange_rate,
+                    'debit' => 0,
+                    'credit' => $this->grandTotal,
+                    'balance' => -$this->grandTotal,
+                    'ref_type' => 'sale',
+                    'ref_id' => $sale->id,
+                    'created_by' => Auth::id(),
+                ]);
             }
         });
 
@@ -400,6 +434,29 @@ new class extends Component {
                 'ref_id' => $sale->id,
                 'created_by' => Auth::id(),
             ]);
+
+            // record commission if applicable
+            if ($sale->employee_id) {
+                $employee = Employee::find($sale->employee_id);
+                if ($employee && $employee->commission_rate > 0) {
+                    $commissionAmount = $sale->grand_total * ($employee->commission_rate / 100);
+
+                    EmployeeLedger::create([
+                        'employee_id' => $sale->employee_id,
+                        'date' => now()->format('Y-m-d'),
+                        'type' => 'commission',
+                        'description' => 'Commission from Converted Invoice #' . $sale->id . ' (' . $employee->commission_rate . '%)',
+                        'currency' => $sale->currency,
+                        'exchange_rate' => $sale->exchange_rate,
+                        'debit' => 0,
+                        'credit' => $commissionAmount,
+                        'balance' => $commissionAmount,
+                        'ref_type' => 'sale',
+                        'ref_id' => $sale->id,
+                        'created_by' => Auth::id(),
+                    ]);
+                }
+            }
         });
 
         session()->flash('success', 'Converted to Invoice successfully.');
@@ -769,125 +826,274 @@ new class extends Component {
                     </div>
                 </div>
                 <div class="modal-body p-0">
-                    <div class="invoice-viewer-wrapper" style="background: #e9ecef; padding: 20px; overflow-y: auto; max-height: 80vh;">
+                    <style>
+                        .invoice-preview-container {
+                            --print-top: 90mm;
+                            --print-left: 12mm;
+                            --print-width: 186mm;
+                            --print-height: 185mm;
+                            --row-height: 8mm;
+                            background: #f0f0f0;
+                            padding: 20px;
+                            display: flex;
+                            justify-content: center;
+                            max-height: 80vh;
+                            overflow-y: auto;
+                        }
+
+                        .preview-page {
+                            width: 210mm;
+                            min-height: 297mm;
+                            background-color: white;
+                            position: relative;
+                            overflow: hidden;
+                            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                        }
+
+                        .preview-background {
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            width: 100%;
+                            height: 100%;
+                            z-index: 1;
+                            object-fit: fill;
+                        }
+
+                        .preview-print-area {
+                            position: absolute;
+                            top: var(--print-top);
+                            left: var(--print-left);
+                            width: var(--print-width);
+                            height: var(--print-height);
+                            display: flex;
+                            flex-direction: column;
+                            font-family: 'Tahoma', sans-serif;
+                            z-index: 2;
+                        }
+
+                        .preview-info-grid {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr 1fr 1fr;
+                            gap: 3mm;
+                            margin-bottom: 3mm;
+                            font-weight: bold;
+                            color: #32267d;
+                            border: 1px solid #b0a8d8;
+                            background: #f3f1fb;
+                            padding: 2mm;
+                            border-radius: 1mm;
+                            font-size: 10pt;
+                            direction: rtl;
+                        }
+
+                        .preview-info-item {
+                            display: flex;
+                            gap: 2mm;
+                            align-items: baseline;
+                        }
+
+                        .preview-info-item label {
+                            white-space: nowrap;
+                            color: #7a6fb0;
+                            font-size: 8pt;
+                        }
+
+                        .preview-info-item span {
+                            color: #32267d;
+                            font-weight: 900;
+                            unicode-bidi: plaintext;
+                            text-align: right;
+                        }
+
+                        .preview-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            table-layout: fixed;
+                            margin-top: 1mm;
+                            direction: rtl;
+                        }
+
+                        .preview-table thead th {
+                            border: 1px solid #32267d;
+                            background-color: #32267d;
+                            color: #ffffff;
+                            padding: 1.5mm 1mm;
+                            text-align: center;
+                            font-size: 9pt;
+                        }
+
+                        .preview-table tbody td {
+                            border-right: 1px solid #b0a8d8;
+                            border-left: 1px solid #b0a8d8;
+                            padding: 0.5mm 1.5mm;
+                            height: var(--row-height);
+                            vertical-align: middle;
+                            font-size: 9pt;
+                            color: #32267d;
+                            overflow: hidden;
+                            white-space: nowrap;
+                            text-align: center;
+                        }
+
+                        .preview-table tbody tr:last-child td {
+                            border-bottom: 1px solid #b0a8d8;
+                        }
+
+                        .preview-table tbody tr:nth-child(even) td {
+                            background-color: #f3f1fb;
+                        }
+
+                        .preview-col-no { width: 12mm; }
+                        .preview-col-item { width: auto; text-align: right !important; }
+                        .preview-col-qty { width: 18mm; }
+                        .preview-col-price { width: 28mm; }
+                        .preview-col-total { width: 32mm; }
+
+                        .preview-summary-grid {
+                            margin-top: 5mm;
+                            display: grid;
+                            grid-template-columns: repeat(5, 1fr);
+                            border: 1px solid #32267d;
+                            font-size: 8.5pt;
+                            direction: rtl;
+                        }
+
+                        .preview-summary-cell {
+                            border-left: 1px solid #b0a8d8;
+                            padding: 1.5mm 1mm;
+                            text-align: center;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 1mm;
+                        }
+
+                        .preview-summary-cell:last-child {
+                            border-left: none;
+                        }
+
+                        .preview-summary-label {
+                            font-weight: bold;
+                            color: #32267d;
+                            border-bottom: 0.5px solid #b0a8d8;
+                            padding-bottom: 1mm;
+                        }
+
+                        .preview-summary-value {
+                            font-weight: 800;
+                            color: #32267d;
+                        }
+
+                        .preview-total-in-words {
+                            grid-column: span 5;
+                            padding: 2mm;
+                            text-align: center;
+                            font-weight: bold;
+                            background: #f3f1fb;
+                            border-top: 1px solid #b0a8d8;
+                            color: #32267d;
+                        }
+
+                        .preview-notes-container {
+                            margin-top: 4mm;
+                            border: 1px solid #32267d;
+                            border-radius: 1mm;
+                            padding: 2mm;
+                            background: #f3f1fb;
+                            font-size: 9pt;
+                            color: #32267d;
+                            direction: rtl;
+                        }
+                    </style>
+                    <div class="invoice-preview-container">
                         @if($viewingSale)
-                            <!-- Embed the same structure as print but responsive -->
-                            <div class="invoice-card" style="background: white; width: 210mm; margin: 0 auto; padding: 10mm; border: 2px solid #3491d1; box-shadow: 0 5px 25px rgba(0,0,0,0.1); position: relative;">
-                               
-                                <!-- Header -->
-                                <div style="display: grid; grid-template-columns: 25mm 1fr 50mm; gap: 5mm; align-items: center; margin-bottom: 5mm;">
-                                    <div style="background-color: #3491d1; color: white; writing-mode: vertical-rl; text-orientation: mixed; display: flex; align-items: center; justify-content: center; font-size: 24pt; font-weight: 900; padding: 5mm 0; border-radius: 2mm; height: 45mm; text-align: center; transform: rotate(180deg);">INVOICE</div>
-                                    <div style="text-align: center;">
-                                        <h1 style="color: #0056b3; margin: 0; font-size: 22pt; font-weight: 900;">شركة علي هادي للتجارة</h1>
-                                        <h2 style="color: #0056b3; margin: 0; font-size: 18pt; letter-spacing: 1px; font-weight: 900;">ALI HADI TRADING CO.</h2>
-                                        <div style="color: #0056b3; font-size: 13pt; font-weight: 700; margin-top: 2mm; border-top: 1px solid #3491d1; border-bottom: 1px solid #3491d1; padding: 1mm 0;">قطع غيار الثلاجات والـمـكـيـفـات</div>
-                                        <div style="color: #0056b3; font-size: 10pt; font-weight: 800; margin-bottom: 2mm;">AIR CONDITIONER & REFRIGERATION SPARE PARTS</div>
-                                        <div style="font-size: 8.5pt; color: #0056b3; font-weight: 600; line-height: 1.4;">
-                                            بغداد - السنك - مقابل القصر الأبيض<br>
-                                            Tel: +964 1 8868996, Fax: +964 1 8868996, Mob: +964 7 902430768<br>
-                                            Email: ali_hadi_trading@yahoo.com
+                            @php
+                                $typeLabel = $viewingSale->type == 'invoice' ? 'فاتورة مبيعات' : ($viewingSale->type == 'quotation' ? 'عرض سعر' : 'فاتورة برو فورما');
+                                $currencySymbol = $viewingSale->currency === 'USD' ? '$' : 'د.ع';
+                            @endphp
+                            <div class="preview-page">
+                                <img src="{{ asset('assets/images/invois.png') }}" class="preview-background" alt="Invoice Background">
+                                <div class="preview-print-area">
+                                    <div class="preview-info-grid">
+                                        <div class="preview-info-item"><label>رقم الفاتورة:</label> <span>{{ $viewingSale->id }}</span></div>
+                                        <div class="preview-info-item"><label>التاريخ:</label> <span>{{ $viewingSale->date }}</span></div>
+                                        <div class="preview-info-item"><label>السيد / السيدة:</label> <span>{{ $viewingSale->customer->name }}</span></div>
+                                        <div class="preview-info-item"><label>نوع الفاتورة:</label> <span>{{ $typeLabel }}</span></div>
+                                        <div class="preview-info-item"><label>الهاتف:</label> <span>{{ $viewingSale->customer->phone }}</span></div>
+                                        <div class="preview-info-item"><label>العنوان:</label> <span>{{ $viewingSale->customer->address }}</span></div>
+                                        <div class="preview-info-item"><label>العملة:</label> <span>{{ $viewingSale->currency === 'USD' ? 'دولار امريكي' : 'دينار عراقي' }}</span></div>
+                                    </div>
+
+                                    <table class="preview-table">
+                                        <thead>
+                                            <tr>
+                                                <th class="preview-col-no text-white">No</th>
+                                                <th class="preview-col-item text-white">Item Description</th>
+                                                <th class="preview-col-qty text-white">Qty</th>
+                                                <th class="preview-col-price text-white">Price</th>
+                                                <th class="preview-col-total text-white">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($viewingSale->items as $index => $item)
+                                                <tr>
+                                                    <td class="preview-col-no">{{ $index + 1 }}</td>
+                                                    <td class="preview-col-item">{{ $item->product->name }}</td>
+                                                    <td class="preview-col-qty">{{ number_format($item->qty, 0) }}</td>
+                                                    <td class="preview-col-price">{{ number_format($item->price, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</td>
+                                                    <td class="preview-col-total">{{ number_format($item->subtotal, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</td>
+                                                </tr>
+                                            @endforeach
+                                            @for($i = count($viewingSale->items); $i < 12; $i++)
+                                                <tr>
+                                                    <td class="preview-col-no">&nbsp;</td>
+                                                    <td class="preview-col-item"></td>
+                                                    <td class="preview-col-qty"></td>
+                                                    <td class="preview-col-price"></td>
+                                                    <td class="preview-col-total"></td>
+                                                </tr>
+                                            @endfor
+                                        </tbody>
+                                    </table>
+
+                                    @if($viewingSale->notes)
+                                        <div class="preview-notes-container">
+                                            <div style="font-weight: bold; margin-bottom: 1mm;">الملاحظات / Notes:</div>
+                                            <div style="white-space: pre-wrap;">{{ $viewingSale->notes }}</div>
+                                        </div>
+                                    @endif
+
+                                    <div class="preview-summary-grid">
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">المجموع</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingSale->total, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">الخصم</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingSale->discount, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">المبلغ الواصل</span>
+                                            <span class="preview-summary-value">{{ $viewingSale->payment_status === 'paid' ? number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) . ' ' . $currencySymbol : '0' }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">الرصيد السابق</span>
+                                            <span class="preview-summary-value">---</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">الرصيد المتبقي</span>
+                                            <span class="preview-summary-value">{{ $viewingSale->payment_status === 'paid' ? '0' : number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) . ' ' . $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-total-in-words">
+                                            {{ \App\Services\ArabicAmountToWords::translate($viewingSale->grand_total, $viewingSale->currency) }}
                                         </div>
                                     </div>
-                                    <div style="display: flex; flex-direction: column; gap: 10mm; align-items: flex-end;">
-                                        <div style="border: 2px solid #3491d1; border-radius: 2mm; width: 45mm; text-align: center; overflow: hidden;">
-                                            <div style="border-bottom: 1px solid #3491d1; padding: 1mm; font-weight: 700; font-size: 10pt;">نقداً / على الحساب</div>
-                                            <div style="padding: 1mm; font-weight: 700; font-size: 9pt;">CASH / CREDIT</div>
-                                        </div>
-                                        <div style="font-size: 12pt; font-weight: 700; color: #0b2b4a;">No.{{ $viewingSale->id }}</div>
-                                    </div>
                                 </div>
-
-                                <!-- Brand Logos -->
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5mm; padding: 0 10mm;">
-                                    <div style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">RECO<br><small>MADE IN ITALY</small></div>
-                                    <div style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">interdryers<br><small>MADE IN ITALY</small></div>
-                                    <div style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">HARRIS<br><small>MADE IN USA</small></div>
-                                    <div style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">P&M<br><small>MADE IN TAIWAN</small></div>
-                                    <div style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">Arkema<br><small>MADE IN FRANCE</small></div>
-                                    <div style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">DuPont<br><small>MADE IN USA</small></div>
-                                    <div style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">RANCO<br><small>MADE IN EU</small></div>
-                                    <div style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">Maksal<br><small>MADE IN SOUTH AFRICA</small></div>
-                                </div>
-
-                                <!-- Info Box -->
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-bottom: 5mm; font-size: 11pt;">
-                                    <div style="display: flex; align-items: baseline; gap: 2mm;">
-                                        <label>السيد / Mr. / M/s.:</label>
-                                        <span style="flex-grow: 1; border-bottom: 1px dotted #3491d1; padding: 0 2mm; font-weight: 700;">{{ $viewingSale->customer->name }}</span>
-                                    </div>
-                                    <div style="display: flex; align-items: baseline; gap: 2mm; direction: ltr;">
-                                        <label>Date / التاريخ:</label>
-                                        <span style="flex-grow: 1; border-bottom: 1px dotted #3491d1; padding: 0 2mm; font-weight: 700; direction: rtl;">{{ $viewingSale->date }}</span>
-                                    </div>
-                                </div>
-
-                                <!-- Watermark -->
-                                <div style="position: absolute; top: 70%; left: 50%; transform: translate(-50%, -50%) rotate(-15deg); font-size: 40pt; font-weight: 900; color: #3491d1; white-space: nowrap; opacity: 0.05; z-index: 1; pointer-events: none;">TRUST OF GENUINE PARTS</div>
-
-                                <!-- Table -->
-                                <table style="width: 100%; border-collapse: collapse; border: 2px solid #3491d1; position: relative; z-index: 2;">
-                                    <thead>
-                                        <tr style="background-color: #3491d1; color: white;">
-                                            <th style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 10mm; font-size: 9pt;">الرقم<br><small>S.No.</small></th>
-                                            <th style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 22mm; font-size: 9pt;">رقم النوع<br><small>Item Code</small></th>
-                                            <th style="border: 1px solid white; padding: 1.5mm; text-align: right; font-size: 9pt;">التفاصيل<br><small>Description</small></th>
-                                            <th style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 15mm; font-size: 9pt;">العدد<br><small>Qty.</small></th>
-                                            <th style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 28mm; font-size: 9pt;">السعر<br><small>Rate</small></th>
-                                            <th style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 32mm; font-size: 9pt;">المبلغ<br><small>Amount</small></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach($viewingSale->items as $index => $item)
-                                            <tr>
-                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ $index + 1 }}</td>
-                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ $item->product->sku ?? '' }}</td>
-                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; font-size: 9.5pt;">{{ $item->product->name }}</td>
-                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ number_format($item->qty, 0) }}</td>
-                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ number_format($item->price, $viewingSale->currency === 'USD' ? 2 : 0) }}</td>
-                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">{{ number_format($item->subtotal, $viewingSale->currency === 'USD' ? 2 : 0) }}</td>
-                                            </tr>
-                                        @endforeach
-                                        @for($i = count($viewingSale->items); $i < 6; $i++)
-                                            <tr>
-                                                <td style="border: 1px solid #3491d1; height: 9mm;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                            </tr>
-                                        @endfor
-                                    </tbody>
-                                </table>
-
-                                <!-- Final Words -->
-                                <div style="font-size: 10pt; font-weight: 700; text-align: center; margin-top: 3mm; margin-bottom: 2mm;">
-                                    {{ \App\Services\ArabicAmountToWords::translate($viewingSale->grand_total, $viewingSale->currency) }}
-                                </div>
-
-                                <!-- Summary Row -->
-                                <div style="display: grid; grid-template-columns: 1fr 40mm 32mm; border: 2px solid #3491d1; align-items: center;">
-                                    <div style="padding: 1.5mm 3mm; font-size: 9pt; font-weight: 700; text-align: center;">
-                                    </div>
-                                    <div style="background-color: #deeaf6; padding: 1.5mm; text-align: center; font-weight: 900; border-right: 2px solid #3491d1; border-left: 2px solid #3491d1;">
-                                        {{ $viewingSale->currency === 'USD' ? 'Total USD / المجموع' : 'Total Dinar / المجموع' }}
-                                    </div>
-                                    <div style="padding: 1.5mm; text-align: center; font-weight: 900; font-size: 11pt;">
-                                        {{ number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) }}
-                                    </div>
-                                </div>
-
-                                <!-- Terms -->
-                                <div style="display: flex; justify-content: space-between; font-size: 9pt; font-weight: 700; color: #0b2b4a; margin-top: 5mm; border-top: 2px solid #3491d1; padding-top: 2mm;">
-                                    <div>Goods once sold will not be taken back.<br>All Electrical items carry no guarantee.</div>
-                                    <div style="text-align: center; color: #0056b3; font-size: 10pt;">TRUST OF<br>GENUINE PARTS</div>
-                                    <div style="text-align: left;">البضاعة المباعة لا ترد ولا تستبدل<br>كافة الأدوات الكهربائية غير مضمونة</div>
-                                </div>
-
-                                <!-- Signatures -->
-                                <div style="display: flex; justify-content: space-between; padding: 5mm 10mm 0; font-size: 10pt; font-weight: 700;">
-                                    <div>Receiver's Signature / توقيع المستلم</div>
-                                    <div>For ALI HADI TRADING CO.</div>
+                            </div>
+                        @else
+                            <div class="text-center p-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
                                 </div>
                             </div>
                         @endif

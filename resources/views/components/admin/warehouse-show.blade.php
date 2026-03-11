@@ -13,15 +13,54 @@ new class extends Component {
     public $adj_qty = 1;
     public $adj_type = 'in'; // 'in' or 'out'
     public $adj_note = '';
+    public $current_stock = 0;
+
+    // Edit Metadata Fields
+    public $name, $location, $notes;
 
     public function mount($id)
     {
         $this->warehouse = Warehouse::findOrFail($id);
+        $this->initEditFields();
+    }
+
+    protected function initEditFields()
+    {
+        $this->name = $this->warehouse->name;
+        $this->location = $this->warehouse->location;
+        $this->notes = $this->warehouse->notes;
+    }
+
+    public function openEditModal()
+    {
+        $this->initEditFields();
+        $this->dispatch('open-edit-warehouse-modal');
+    }
+
+    public function saveWarehouse()
+    {
+        $this->validate([
+            'name' => 'required|string|max:255',
+            'location' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
+        ]);
+
+        $this->warehouse->update([
+            'name' => $this->name,
+            'location' => $this->location,
+            'notes' => $this->notes,
+        ]);
+
+        $this->warehouse->refresh();
+        session()->flash('success', __('Warehouse updated successfully.'));
+        $this->dispatch('close-edit-warehouse-modal');
     }
 
     public function openAdjustmentModal($productId)
     {
         $this->targetProductId = $productId;
+        $product = Product::find($productId);
+        $this->current_stock = $product ? $product->stockInWarehouse($this->warehouse->id) : 0;
         $this->adj_qty = 1;
         $this->adj_type = 'in';
         $this->adj_note = '';
@@ -57,9 +96,7 @@ new class extends Component {
                 $q->where('name', 'like', '%' . $this->productSearch . '%')
                     ->orWhere('sku', 'like', '%' . $this->productSearch . '%');
             })
-                ->whereHas('stockMovements', function ($q) {
-                    $q->where('warehouse_id', $this->warehouse->id);
-                })
+                ->where('is_active', true)
                 ->get()
         ];
     }
@@ -73,9 +110,14 @@ new class extends Component {
                     <h4 class="mb-0">{{ __('Warehouse Details') }}: {{ $warehouse->name }}</h4>
                     <p class="text-muted mb-0">{{ $warehouse->location }} | {{ $warehouse->notes }}</p>
                 </div>
-                <a href="{{ route('admin.warehouses.index') }}" class="btn btn-secondary btn-sm" wire:navigate>
-                    <i class="ri-arrow-go-back-line align-bottom me-1"></i> {{ __('Back to List') }}
-                </a>
+                <div class="d-flex gap-2">
+                    <button wire:click="openEditModal" class="btn btn-primary btn-sm">
+                        <i class="ri-edit-line align-bottom me-1"></i> {{ __('Edit Warehouse') }}
+                    </button>
+                    <a href="{{ route('admin.warehouses.index') }}" class="btn btn-secondary btn-sm" wire:navigate>
+                        <i class="ri-arrow-go-back-line align-bottom me-1"></i> {{ __('Back to List') }}
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -132,6 +174,45 @@ new class extends Component {
         </div>
     </div>
 
+    <!-- Edit Warehouse Modal -->
+    <div wire:ignore.self class="modal fade" id="editWarehouseModal" tabindex="-1"
+        aria-labelledby="editWarehouseModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editWarehouseModalLabel">{{ __('Edit Warehouse') }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form wire:submit.prevent="saveWarehouse">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Warehouse Name') }}</label>
+                            <input type="text" wire:model="name"
+                                class="form-control @error('name') is-invalid @enderror">
+                            @error('name') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Location') }}</label>
+                            <input type="text" wire:model="location"
+                                class="form-control @error('location') is-invalid @enderror">
+                            @error('location') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Notes') }}</label>
+                            <textarea wire:model="notes"
+                                class="form-control @error('notes') is-invalid @enderror"></textarea>
+                            @error('notes') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
+                        <button type="submit" class="btn btn-primary">{{ __('Save Changes') }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Stock Adjustment Modal -->
     <div wire:ignore.self class="modal fade" id="adjustmentModal" tabindex="-1" aria-labelledby="adjustmentModalLabel"
         aria-hidden="true">
@@ -143,16 +224,36 @@ new class extends Component {
                 </div>
                 <form wire:submit.prevent="adjustStock">
                     <div class="modal-body">
+                        <div class="alert alert-info py-2 mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>{{ __('Current Quantity') }}:</span>
+                                <strong>{{ (float) $current_stock }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>{{ __('Adjustment Quantity') }}:</span>
+                                <strong class="{{ $adj_type == 'in' ? 'text-success' : 'text-danger' }}">
+                                    {{ $adj_type == 'in' ? '+' : '-' }}{{ (float) ($adj_qty ?: 0) }}
+                                </strong>
+                            </div>
+                            <hr class="my-1 border-info">
+                            <div class="d-flex justify-content-between">
+                                <span>{{ __('Quantity After') }}:</span>
+                                <strong>
+                                    {{ (float) ($adj_type == 'in' ? $current_stock + (float) ($adj_qty ?: 0) : $current_stock - (float) ($adj_qty ?: 0)) }}
+                                </strong>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label">{{ __('Adjustment Type') }}</label>
-                            <select wire:model="adj_type" class="form-select">
+                            <select wire:model.live="adj_type" class="form-select">
                                 <option value="in">{{ __('Adjustment In') }} (+)</option>
                                 <option value="out">{{ __('Adjustment Out') }} (-)</option>
                             </select>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">{{ __('Adjustment Qty') }}</label>
-                            <input type="number" step="0.001" wire:model="adj_qty" class="form-control">
+                            <input type="number" step="0.001" wire:model.live="adj_qty" class="form-control">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">{{ __('Note') }}</label>
@@ -170,6 +271,13 @@ new class extends Component {
 
     <script>
         document.addEventListener('livewire:init', () => {
+            Livewire.on('open-edit-warehouse-modal', () => {
+                new bootstrap.Modal(document.getElementById('editWarehouseModal')).show();
+            });
+            Livewire.on('close-edit-warehouse-modal', () => {
+                var modal = bootstrap.Modal.getInstance(document.getElementById('editWarehouseModal'));
+                if (modal) modal.hide();
+            });
             Livewire.on('open-adjustment-modal', () => {
                 new bootstrap.Modal(document.getElementById('adjustmentModal')).show();
             });
