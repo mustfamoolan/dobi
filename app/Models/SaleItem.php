@@ -14,6 +14,7 @@ class SaleItem extends Model
         'product_id',
         'qty',
         'price',
+        'cost_snapshot',
         'subtotal',
     ];
 

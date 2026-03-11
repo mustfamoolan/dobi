@@ -263,12 +263,19 @@ new class extends Component {
             // 2. Create Items & Stock Movements
             foreach ($this->items as $item) {
                 $product = Product::find($item['product_id']);
+                
+                // Calculate cost snapshot in the sale currency
+                // Assuming product->cost is always in IQD
+                $costInSaleCurrency = ($this->currency === 'USD') 
+                    ? ($product->cost / $this->exchange_rate) 
+                    : $product->cost;
+
                 SaleItem::create([
                     'sale_id' => $sale->id,
                     'product_id' => $item['product_id'],
                     'qty' => $item['qty'],
                     'price' => $item['price'],
-                    'cost_snapshot' => $product->cost ?? 0,
+                    'cost_snapshot' => $costInSaleCurrency,
                     'subtotal' => $item['subtotal'],
                 ]);
 

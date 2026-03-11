@@ -44,14 +44,18 @@ new class extends Component {
             $query->where('currency', $this->currency);
         }
 
+        $sales_all = (clone $query)->get();
+        $total_usd = $sales_all->sum(fn($s) => $s->currency === 'USD' ? $s->grand_total : ($s->grand_total / $s->exchange_rate));
+        $total_iqd = $sales_all->sum(fn($s) => $s->currency === 'IQD' ? $s->grand_total : ($s->grand_total * $s->exchange_rate));
+
         $sales = $query->latest()->paginate(20);
 
         return [
             'sales' => $sales,
             'customers' => Customer::all(),
             'warehouses' => \App\Models\Warehouse::where('is_active', true)->get(),
-            'total_amount' => $query->sum('total'),
-            'total_grand' => $query->sum('grand_total'),
+            'total_usd' => $total_usd,
+            'total_iqd' => $total_iqd,
         ];
     }
 }; ?>
@@ -97,9 +101,28 @@ new class extends Component {
                                 <option value="">{{ __('All Currencies') }}</option>
                                 <option value="USD">USD</option>
                                 <option value="IQD">IQD</option>
-                            </select>
-                        </div>
-                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unified Totals -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card bg-primary-subtle border-0">
+                <div class="card-body py-3">
+                    <h6 class="text-primary mb-1">{{ __('Total Unified in USD') }} ($)</h6>
+                    <h4 class="mb-0">{{ number_format($total_usd, 2) }} $</h4>
+                    <small class="text-muted">{{ __('Converted using historical rates') }}</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card bg-info-subtle border-0">
+                <div class="card-body py-3">
+                    <h6 class="text-info mb-1">{{ __('Total Unified in IQD') }} (د.ع)</h6>
+                    <h4 class="mb-0">{{ number_format($total_iqd, 0) }} د.ع</h4>
+                    <small class="text-muted">{{ __('Converted using historical rates') }}</small>
                 </div>
             </div>
         </div>
@@ -113,7 +136,7 @@ new class extends Component {
                         <table class="table table-nowrap align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>{{ __('Sale ID') }}</th>
+                                    <th>#{{ $sale->id }}</th>
                                     <th>{{ __('Date') }}</th>
                                     <th>{{ __('Customer') }}</th>
                                     <th>{{ __('Currency') }}</th>
@@ -127,8 +150,12 @@ new class extends Component {
                                         <td>#{{ $sale->id }}</td>
                                         <td>{{ $sale->date }}</td>
                                         <td>{{ $sale->customer->name ?? 'N/A' }}</td>
-                                        <td>{{ $sale->currency }}</td>
-                                        <td>{{ number_format($sale->grand_total, 0) }}</td>
+                                        <td>
+                                            <span class="badge {{ $sale->currency == 'USD' ? 'bg-info' : 'bg-secondary' }}">
+                                                {{ $sale->currency }}
+                                            </span>
+                                        </td>
+                                        <td>{{ number_format($sale->grand_total, $sale->currency == 'USD' ? 2 : 0) }}</td>
                                         <td>{{ number_format($sale->exchange_rate, 0) }}</td>
                                     </tr>
                                 @empty

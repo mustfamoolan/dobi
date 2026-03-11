@@ -44,14 +44,18 @@ new class extends Component {
             $query->where('currency', $this->currency);
         }
 
+        $purchases_all = (clone $query)->get();
+        $total_usd = $purchases_all->sum(fn($p) => $p->currency === 'USD' ? $p->grand_total : ($p->grand_total / $p->exchange_rate));
+        $total_iqd = $purchases_all->sum(fn($p) => $p->currency === 'IQD' ? $p->grand_total : ($p->grand_total * $p->exchange_rate));
+
         $purchases = $query->latest()->paginate(20);
 
         return [
             'purchases' => $purchases,
             'suppliers' => Supplier::all(),
             'warehouses' => \App\Models\Warehouse::where('is_active', true)->get(),
-            'total_amount' => $query->sum('total'),
-            'total_grand' => $query->sum('grand_total'),
+            'total_usd' => $total_usd,
+            'total_iqd' => $total_iqd,
         ];
     }
 }; ?>
@@ -105,6 +109,28 @@ new class extends Component {
         </div>
     </div>
 
+    <!-- Unified Totals -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card bg-primary-subtle border-0">
+                <div class="card-body py-3">
+                    <h6 class="text-primary mb-1">{{ __('Total Unified in USD') }} ($)</h6>
+                    <h4 class="mb-0">{{ number_format($total_usd, 2) }} $</h4>
+                    <small class="text-muted">{{ __('Converted using historical rates') }}</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card bg-info-subtle border-0">
+                <div class="card-body py-3">
+                    <h6 class="text-info mb-1">{{ __('Total Unified in IQD') }} (د.ع)</h6>
+                    <h4 class="mb-0">{{ number_format($total_iqd, 0) }} د.ع</h4>
+                    <small class="text-muted">{{ __('Converted using historical rates') }}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row mt-4">
         <div class="col-12">
             <div class="card">
@@ -127,8 +153,14 @@ new class extends Component {
                                         <td>#{{ $purchase->id }}</td>
                                         <td>{{ $purchase->date }}</td>
                                         <td>{{ $purchase->supplier->name ?? 'N/A' }}</td>
-                                        <td>{{ $purchase->currency }}</td>
-                                        <td>{{ number_format($purchase->grand_total, 0) }}</td>
+                                        <td>
+                                            <span
+                                                class="badge {{ $purchase->currency == 'USD' ? 'bg-info' : 'bg-secondary' }}">
+                                                {{ $purchase->currency }}
+                                            </span>
+                                        </td>
+                                        <td>{{ number_format($purchase->grand_total, $purchase->currency == 'USD' ? 2 : 0) }}
+                                        </td>
                                         <td>{{ number_format($purchase->exchange_rate, 0) }}</td>
                                     </tr>
                                 @empty
