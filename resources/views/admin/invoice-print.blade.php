@@ -156,22 +156,36 @@
         /* Top Info Grid */
         .info-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr 1fr;
-            gap: 3mm;
+            grid-template-columns: 1.2fr 1fr 1fr; /* 3 columns */
+            grid-template-rows: auto auto;      /* 2 rows */
+            gap: 2mm 3mm;
             margin-bottom: 3mm;
             font-weight: bold;
             font-size: var(--font-size-header);
             color: #32267d;
             border: 1px solid #b0a8d8;
             background: #f3f1fb;
-            padding: 2mm;
+            padding: 2.5mm;
             border-radius: 1mm;
+            align-items: center;
         }
 
         .info-item {
             display: flex;
-            gap: 2mm;
-            align-items: baseline;
+            gap: 1.5mm;
+            align-items: center;
+        }
+
+        .info-item.id-cell {
+            font-size: 16pt;
+            font-weight: 400;
+            color: #32267d;
+        }
+
+        .info-item.type-cell {
+            justify-content: center;
+            font-weight: bold;
+            font-size: 11pt;
         }
 
         .info-item label {
@@ -421,15 +435,17 @@
     <template id="page-template">
         <div class="page-container">
             <div class="table-container-pre">
-                <!-- Info Grid (Two rows) -->
+                <!-- Info Grid (Two rows - 3 columns) -->
                 <div class="info-grid">
-                    <div class="info-item"><label>رقم الفاتورة:</label> <span class="data-no"></span></div>
-                    <div class="info-item"><label>الاسم:</label> <span class="data-customer"></span></div>
-                    <div class="info-item"><label>الهاتف:</label> <span class="data-phone"></span></div>
-                    <div class="info-item"><label>العنوان:</label> <span class="data-address"></span></div>
+                    <!-- Row 1 -->
+                    <div class="info-item id-cell"><span class="data-no"></span></div>
+                    <div class="info-item" style="justify-content: center;"><label>العنوان:</label> <span class="data-address"></span></div>
+                    <div class="info-item" style="justify-content: flex-end;"><label>الاسم:</label> <span class="data-customer"></span></div>
+                    
+                    <!-- Row 2 -->
                     <div class="info-item"><label>التاريخ:</label> <span class="data-date"></span></div>
-                    <div class="info-item"><label>العملة:</label> <span class="data-currency"></span></div>
-                    <div class="info-item"><label>نوع الفاتورة:</label> <span class="data-type"></span></div>
+                    <div class="info-item type-cell"><span class="data-type"></span></div>
+                    <div class="info-item" style="justify-content: flex-end;"><label>الهاتف:</label> <span class="data-phone"></span></div>
                 </div>
 
                 <table class="invoice-table">

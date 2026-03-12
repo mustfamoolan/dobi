@@ -33,6 +33,15 @@ new class extends Component {
     public $items = []; // [{product_id, name, qty, cost, subtotal}]
     public $viewingPurchase = null;
 
+    // Payment Modal Fields
+    public $selectedPurchaseId;
+    public $paymentTotal = 0;
+    public $paymentAmount = 0;
+    public $remainingAmount = 0;
+    public $paymentAccountId;
+    public $paymentCurrency;
+    public $paymentExchangeRate;
+
     // Item Addition Fields
     public $selected_product_id;
     public $item_qty = 1;
@@ -255,6 +264,7 @@ new class extends Component {
             DB::commit();
             session()->flash('success', 'Purchase invoice created successfully.');
             $this->dispatch('close-purchase-modal');
+            $this->dispatch('purchase-saved', id: $purchase->id);
         } catch (\Exception $e) {
             DB::rollBack();
             session()->flash('error', 'Error saving purchase: ' . $e->getMessage());
@@ -275,11 +285,86 @@ new class extends Component {
         } catch (\Exception $e) { }
     }
 
-    public function markAsPaid($id)
+    public function openPaymentModal($id)
     {
         $purchase = Purchase::findOrFail($id);
-        $purchase->update(['payment_status' => 'paid']);
-        session()->flash('success', 'Purchase marked as paid.');
+        $this->selectedPurchaseId = $id;
+        $this->paymentTotal = $purchase->grand_total;
+        $this->paymentAmount = $purchase->grand_total;
+        $this->remainingAmount = 0;
+        $this->paymentCurrency = $purchase->currency;
+        $this->paymentExchangeRate = $purchase->exchange_rate;
+        $this->paymentAccountId = \App\Models\FinancialAccount::where('is_active', true)->first()?->id;
+        $this->dispatch('open-payment-modal');
+    }
+
+    public function updatedPaymentAmount()
+    {
+        $this->remainingAmount = max(0, $this->paymentTotal - floatval($this->paymentAmount));
+    }
+
+    public function submitPayment()
+    {
+        $this->validate([
+            'paymentAccountId' => 'required|exists:financial_accounts,id',
+            'paymentAmount' => 'required|numeric|min:0',
+        ]);
+
+        $purchase = Purchase::findOrFail($this->selectedPurchaseId);
+
+        try {
+            DB::beginTransaction();
+
+            $account = \App\Models\FinancialAccount::findOrFail($this->paymentAccountId);
+            
+            // 1. Create Supplier Ledger Entry (Debit)
+            SupplierLedger::create([
+                'supplier_id' => $purchase->supplier_id,
+                'date' => now()->format('Y-m-d'),
+                'type' => 'payment',
+                'description' => __('Payment for Purchase') . ' #' . $purchase->id,
+                'currency' => $this->paymentCurrency,
+                'exchange_rate' => $this->paymentExchangeRate,
+                'debit' => $this->paymentAmount,
+                'credit' => 0,
+                'balance' => 0, // This model doesn't seem to use running balance
+                'ref_type' => 'purchase',
+                'ref_id' => $purchase->id,
+                'created_by' => Auth::id(),
+            ]);
+
+            // 2. Record in Treasury (Credit)
+            \App\Models\AccountLedger::create([
+                'account_id' => $this->paymentAccountId,
+                'date' => now()->format('Y-m-d'),
+                'description' => __('Payment for Purchase') . ' #' . $purchase->id,
+                'debit' => 0,
+                'credit' => $this->paymentAmount,
+                'balance' => $account->current_balance - $this->paymentAmount,
+                'ref_type' => 'purchase',
+                'ref_id' => $purchase->id,
+                'created_by' => Auth::id(),
+            ]);
+            
+            $account->decrement('current_balance', $this->paymentAmount);
+
+            // 3. Update Purchase status if fully paid
+            if ($this->remainingAmount <= 0) {
+                $purchase->update(['payment_status' => 'paid']);
+            }
+
+            DB::commit();
+            session()->flash('success', __('Payment recorded successfully.'));
+            $this->dispatch('close-payment-modal');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            session()->flash('error', __('Error recording payment: ') . $e->getMessage());
+        }
+    }
+
+    public function markAsPaid($id)
+    {
+        $this->openPaymentModal($id);
     }
 
     public function viewPurchase($id)
@@ -374,6 +459,10 @@ new class extends Component {
                                         <button wire:click="directPrint({{ $purchase->id }})"
                                             class="btn btn-sm btn-soft-primary" title="{{ __('Print') }}">
                                             <i class="ri-printer-line"></i>
+                                        </button>
+                                        <button onclick="directDownload({{ $purchase->id }})"
+                                            class="btn btn-sm btn-soft-success" title="{{ __('Download PDF') }}">
+                                            <i class="ri-download-2-line"></i>
                                         </button>
                                         <button wire:click="viewPurchase({{ $purchase->id }})"
                                             class="btn btn-sm btn-soft-info" title="{{ __('View Details') }}"><i
@@ -562,6 +651,63 @@ new class extends Component {
         </div>
     </div>
 
+    <!-- Payment Modal -->
+    <div wire:ignore.self class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success">
+                    <h5 class="modal-title text-white" id="paymentModalLabel">{{ __('Record Payment') }} - #{{ $selectedPurchaseId }}</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form wire:submit.prevent="submitPayment">
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">{{ __('Total Amount') }}</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control bg-light" value="{{ number_format($paymentTotal, $paymentCurrency === 'USD' ? 2 : 0) }}" readonly>
+                                    <span class="input-group-text">{{ $paymentCurrency }}</span>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">{{ __('Pay from Treasury') }}</label>
+                                <select wire:model="paymentAccountId" class="form-select @error('paymentAccountId') is-invalid @enderror">
+                                    <option value="">{{ __('Select Treasury') }}</option>
+                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->get() as $fa)
+                                        <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
+                                    @endforeach
+                                </select>
+                                @error('paymentAccountId') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">{{ __('Paid Amount') }}</label>
+                                <div class="input-group">
+                                    <input type="number" step="{{ $paymentCurrency === 'USD' ? '0.01' : '1' }}" wire:model.live="paymentAmount" class="form-control @error('paymentAmount') is-invalid @enderror">
+                                    <span class="input-group-text">{{ $paymentCurrency }}</span>
+                                </div>
+                                @error('paymentAmount') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">{{ __('Remaining') }}</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control bg-light {{ $remainingAmount > 0 ? 'text-danger fw-bold' : 'text-success fw-bold' }}" value="{{ number_format($remainingAmount, $paymentCurrency === 'USD' ? 2 : 0) }}" readonly>
+                                    <span class="input-group-text">{{ $paymentCurrency }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
+                        <button type="submit" class="btn btn-success">{{ __('Confirm Payment') }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- View Purchase Modal -->
     <div wire:ignore.self class="modal fade" id="viewModal" tabindex="-1" aria-labelledby="viewModalLabel"
         aria-hidden="true">
@@ -582,193 +728,277 @@ new class extends Component {
                     </div>
                 </div>
                 <div class="modal-body p-0">
-                    <div class="invoice-viewer-wrapper"
-                        style="background: #e9ecef; padding: 20px; overflow-y: auto; max-height: 80vh;">
+                    <style>
+                        .invoice-preview-container {
+                            background: #f0f2f5;
+                            padding: 2mm;
+                            display: flex;
+                            justify-content: center;
+                            min-height: 80vh;
+                        }
+
+                        .preview-page {
+                            width: 210mm;
+                            height: 297mm;
+                            background: white;
+                            position: relative;
+                            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+                            overflow: hidden;
+                        }
+
+                        .preview-background {
+                            position: absolute;
+                            top: 0;
+                            left: 0;
+                            width: 100%;
+                            height: 100%;
+                            object-fit: fill;
+                            z-index: 1;
+                        }
+
+                        .preview-print-area {
+                            position: absolute;
+                            top: 90mm;
+                            left: 12mm;
+                            width: 186mm;
+                            height: 185mm;
+                            z-index: 2;
+                        }
+
+                        .preview-info-grid {
+                            display: grid;
+                            grid-template-columns: 1.2fr 1fr 1fr;
+                            grid-template-rows: auto auto;
+                            gap: 2mm 3mm;
+                            margin-bottom: 3mm;
+                            font-weight: bold;
+                            color: #32267d;
+                            border: 1px solid #b0a8d8;
+                            background: #f3f1fb;
+                            padding: 2.5mm;
+                            border-radius: 1mm;
+                            align-items: center;
+                            font-size: 10pt;
+                            direction: rtl;
+                        }
+
+                        .preview-info-item {
+                            display: flex;
+                            gap: 1.5mm;
+                            align-items: center;
+                        }
+
+                        .preview-info-item.id-cell {
+                            font-size: 16pt;
+                            font-weight: 400;
+                        }
+
+                        .preview-info-item.type-cell {
+                            justify-content: center;
+                            font-size: 11pt;
+                        }
+
+                        .preview-info-item label {
+                            white-space: nowrap;
+                            color: #7a6fb0;
+                            font-size: 8pt;
+                        }
+
+                        .preview-info-item span {
+                            color: #32267d;
+                            font-weight: 900;
+                            unicode-bidi: plaintext;
+                            text-align: right;
+                        }
+
+                        .preview-table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            table-layout: fixed;
+                            margin-top: 1mm;
+                            direction: rtl;
+                        }
+
+                        .preview-table thead th {
+                            border: 1px solid #32267d;
+                            background-color: #32267d;
+                            color: #ffffff;
+                            padding: 1.5mm 1mm;
+                            text-align: center;
+                            font-size: 9pt;
+                        }
+
+                        .preview-table tbody td {
+                            border-right: 1px solid #b0a8d8;
+                            border-left: 1px solid #b0a8d8;
+                            padding: 0.5mm 1.5mm;
+                            height: 9mm;
+                            vertical-align: middle;
+                            font-size: 9pt;
+                            color: #32267d;
+                            overflow: hidden;
+                            text-align: center;
+                        }
+
+                        .preview-table tbody tr:last-child td {
+                            border-bottom: 1px solid #b0a8d8;
+                        }
+
+                        .preview-table tbody tr:nth-child(even) td {
+                            background-color: #f3f1fb;
+                        }
+
+                        .preview-col-no { width: 12mm; }
+                        .preview-col-item { width: auto; text-align: right !important; }
+                        .preview-col-qty { width: 18mm; }
+                        .preview-col-price { width: 28mm; }
+                        .preview-col-total { width: 32mm; }
+
+                        .preview-summary-grid {
+                            margin-top: 5mm;
+                            display: grid;
+                            grid-template-columns: repeat(5, 1fr);
+                            border: 1px solid #32267d;
+                            font-size: 8.5pt;
+                            direction: rtl;
+                        }
+
+                        .preview-summary-cell {
+                            border-left: 1px solid #b0a8d8;
+                            padding: 1.5mm 1mm;
+                            text-align: center;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 1mm;
+                        }
+
+                        .preview-summary-cell:last-child {
+                            border-left: none;
+                        }
+
+                        .preview-summary-label {
+                            font-weight: bold;
+                            color: #32267d;
+                            border-bottom: 0.5px solid #b0a8d8;
+                            padding-bottom: 1mm;
+                        }
+
+                        .preview-summary-value {
+                            font-weight: 800;
+                            color: #32267d;
+                        }
+
+                        .preview-total-in-words {
+                            grid-column: span 5;
+                            padding: 2mm;
+                            text-align: center;
+                            font-weight: bold;
+                            background: #f3f1fb;
+                            border-top: 1px solid #b0a8d8;
+                            color: #32267d;
+                        }
+
+                        .preview-notes-container {
+                            margin-top: 4mm;
+                            border: 1px solid #32267d;
+                            border-radius: 1mm;
+                            padding: 2mm;
+                            background: #f3f1fb;
+                            font-size: 9pt;
+                            color: #32267d;
+                            direction: rtl;
+                        }
+                    </style>
+                    <div class="invoice-preview-container">
                         @if($viewingPurchase)
-                            <div class="invoice-card"
-                                style="background: white; width: 210mm; margin: 0 auto; padding: 10mm; border: 2px solid #3491d1; box-shadow: 0 5px 25px rgba(0,0,0,0.1); position: relative;">
+                            @php
+                                $currencySymbol = $viewingPurchase->currency === 'USD' ? '$' : 'د.ع';
+                            @endphp
+                            <div class="preview-page">
+                                <img src="{{ asset('assets/images/invois.png') }}" class="preview-background" alt="Invoice Background">
+                                <div class="preview-print-area">
+                                    <div class="preview-info-grid">
+                                        <!-- Row 1 -->
+                                        <div class="preview-info-item id-cell"><span>{{ $viewingPurchase->id }}</span></div>
+                                        <div class="preview-info-item" style="justify-content: center;"><label>العنوان:</label> <span>{{ $viewingPurchase->supplier->address }}</span></div>
+                                        <div class="preview-info-item" style="justify-content: flex-end;"><label>الاسم:</label> <span>{{ $viewingPurchase->supplier->name }}</span></div>
+                                        
+                                        <!-- Row 2 -->
+                                        <div class="preview-info-item"><label>التاريخ:</label> <span>{{ $viewingPurchase->date }}</span></div>
+                                        <div class="preview-info-item type-cell"><span>{{ __('Purchase Invoice') }}</span></div>
+                                        <div class="preview-info-item" style="justify-content: flex-end;"><label>الهاتف:</label> <span>{{ $viewingPurchase->supplier->phone }}</span></div>
+                                    </div>
 
-                                <!-- Header -->
-                                <div
-                                    style="display: grid; grid-template-columns: 25mm 1fr 50mm; gap: 5mm; align-items: center; margin-bottom: 5mm;">
-                                    <div
-                                        style="background-color: #3491d1; color: white; writing-mode: vertical-rl; text-orientation: mixed; display: flex; align-items: center; justify-content: center; font-size: 20pt; font-weight: 900; padding: 5mm 0; border-radius: 2mm; height: 45mm; text-align: center; transform: rotate(180deg);">
-                                        PURCHASE</div>
-                                    <div style="text-align: center;">
-                                        <h1 style="color: #0056b3; margin: 0; font-size: 22pt; font-weight: 900;">شركة علي
-                                            هادي للتجارة</h1>
-                                        <h2
-                                            style="color: #0056b3; margin: 0; font-size: 18pt; letter-spacing: 1px; font-weight: 900;">
-                                            ALI HADI TRADING CO.</h2>
-                                        <div
-                                            style="color: #0056b3; font-size: 13pt; font-weight: 700; margin-top: 2mm; border-top: 1px solid #3491d1; border-bottom: 1px solid #3491d1; padding: 1mm 0;">
-                                            قطع غيار الثلاجات والـمـكـيـفـات</div>
-                                        <div style="color: #0056b3; font-size: 10pt; font-weight: 800; margin-bottom: 2mm;">
-                                            AIR CONDITIONER & REFRIGERATION SPARE PARTS</div>
-                                        <div style="font-size: 8.5pt; color: #0056b3; font-weight: 600; line-height: 1.4;">
-                                            بغداد - السنك - مقابل القصر الأبيض<br>
-                                            Tel: +964 1 8868996, Fax: +964 1 8868996, Mob: +964 7 902430768<br>
-                                            Email: ali_hadi_trading@yahoo.com
+                                    <table class="preview-table">
+                                        <thead>
+                                            <tr>
+                                                <th class="preview-col-no text-white">No</th>
+                                                <th class="preview-col-item text-white">Item Description</th>
+                                                <th class="preview-col-qty text-white">Qty</th>
+                                                <th class="preview-col-price text-white">Price</th>
+                                                <th class="preview-col-total text-white">Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($viewingPurchase->items as $index => $item)
+                                                <tr>
+                                                    <td class="preview-col-no">{{ $index + 1 }}</td>
+                                                    <td class="preview-col-item">{{ $item->product->name }}</td>
+                                                    <td class="preview-col-qty">{{ number_format($item->qty, 0) }}</td>
+                                                    <td class="preview-col-price">{{ number_format($item->cost, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</td>
+                                                    <td class="preview-col-total">{{ number_format($item->subtotal, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</td>
+                                                </tr>
+                                            @endforeach
+                                            @for($i = count($viewingPurchase->items); $i < 12; $i++)
+                                                <tr>
+                                                    <td class="preview-col-no">&nbsp;</td>
+                                                    <td class="preview-col-item"></td>
+                                                    <td class="preview-col-qty"></td>
+                                                    <td class="preview-col-price"></td>
+                                                    <td class="preview-col-total"></td>
+                                                </tr>
+                                            @endfor
+                                        </tbody>
+                                    </table>
+
+                                    @if($viewingPurchase->notes)
+                                        <div class="preview-notes-container">
+                                            <div style="font-weight: bold; margin-bottom: 1mm;">الملاحظات / Notes:</div>
+                                            <div style="white-space: pre-wrap;">{{ $viewingPurchase->notes }}</div>
+                                        </div>
+                                    @endif
+
+                                    <div class="preview-summary-grid">
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">المجموع</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingPurchase->total, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">الخصم</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingPurchase->discount, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">المبلغ الواصل</span>
+                                            <span class="preview-summary-value">{{ $viewingPurchase->payment_status === 'paid' ? number_format($viewingPurchase->grand_total, $viewingPurchase->currency === 'USD' ? 2 : 0) . ' ' . $currencySymbol : '0' }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">الضريبة</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingPurchase->tax ?? 0, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <span class="preview-summary-label">الرصيد الكلي</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingPurchase->grand_total, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-total-in-words">
+                                            {{ \App\Services\ArabicAmountToWords::translate($viewingPurchase->grand_total, $viewingPurchase->currency) }}
                                         </div>
                                     </div>
-                                    <div style="display: flex; flex-direction: column; gap: 10mm; align-items: flex-end;">
-                                        <div
-                                            style="border: 2px solid #3491d1; border-radius: 2mm; width: 45mm; text-align: center; overflow: hidden;">
-                                            <div
-                                                style="border-bottom: 1px solid #3491d1; padding: 1mm; font-weight: 700; font-size: 10pt;">
-                                                نقداً / على الحساب</div>
-                                            <div style="padding: 1mm; font-weight: 700; font-size: 9pt;">CASH / CREDIT</div>
-                                        </div>
-                                        <div style="font-size: 12pt; font-weight: 700; color: #0b2b4a;">
-                                            No.{{ $viewingPurchase->id }}</div>
-                                    </div>
                                 </div>
-
-                                <!-- Brand Logos -->
-                                <div
-                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5mm; padding: 0 10mm;">
-                                    <div
-                                        style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">
-                                        RECO<br><small>MADE IN ITALY</small></div>
-                                    <div
-                                        style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">
-                                        interdryers<br><small>MADE IN ITALY</small></div>
-                                    <div
-                                        style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">
-                                        HARRIS<br><small>MADE IN USA</small></div>
-                                    <div
-                                        style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">
-                                        P&M<br><small>MADE IN TAIWAN</small></div>
-                                    <div
-                                        style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">
-                                        Arkema<br><small>MADE IN FRANCE</small></div>
-                                    <div
-                                        style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">
-                                        DuPont<br><small>MADE IN USA</small></div>
-                                    <div
-                                        style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">
-                                        RANCO<br><small>MADE IN EU</small></div>
-                                    <div
-                                        style="font-size: 8pt; font-weight: 900; color: #0056b3; text-align: center; opacity: 0.8;">
-                                        Maksal<br><small>MADE IN SOUTH AFRICA</small></div>
-                                </div>
-
-                                <!-- Info Box -->
-                                <div
-                                    style="display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; margin-bottom: 5mm; font-size: 11pt;">
-                                    <div style="display: flex; align-items: baseline; gap: 2mm;">
-                                        <label>السيد / Supplier / السيد:</label>
-                                        <span
-                                            style="flex-grow: 1; border-bottom: 1px dotted #3491d1; padding: 0 2mm; font-weight: 700;">{{ $viewingPurchase->supplier->name }}</span>
-                                    </div>
-                                    <div style="display: flex; align-items: baseline; gap: 2mm; direction: ltr;">
-                                        <label>Date / التاريخ:</label>
-                                        <span
-                                            style="flex-grow: 1; border-bottom: 1px dotted #3491d1; padding: 0 2mm; font-weight: 700; direction: rtl;">{{ $viewingPurchase->date }}</span>
-                                    </div>
-                                </div>
-
-                                <!-- Watermark -->
-                                <div
-                                    style="position: absolute; top: 70%; left: 50%; transform: translate(-50%, -50%) rotate(-15deg); font-size: 40pt; font-weight: 900; color: #3491d1; white-space: nowrap; opacity: 0.05; z-index: 1; pointer-events: none;">
-                                    TRUST OF GENUINE PARTS</div>
-
-                                <!-- Table -->
-                                <table
-                                    style="width: 100%; border-collapse: collapse; border: 2px solid #3491d1; position: relative; z-index: 2;">
-                                    <thead>
-                                        <tr style="background-color: #3491d1; color: white;">
-                                            <th
-                                                style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 10mm; font-size: 9pt;">
-                                                الرقم<br><small>S.No.</small></th>
-                                            <th
-                                                style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 22mm; font-size: 9pt;">
-                                                رقم النوع<br><small>Item Code</small></th>
-                                            <th
-                                                style="border: 1px solid white; padding: 1.5mm; text-align: right; font-size: 9pt;">
-                                                التفاصيل<br><small>Description</small></th>
-                                            <th
-                                                style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 14mm; font-size: 9pt;">
-                                                العدد<br><small>Qty.</small></th>
-                                            <th
-                                                style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 28mm; font-size: 9pt;">
-                                                السعر<br><small>Cost</small></th>
-                                            <th
-                                                style="border: 1px solid white; padding: 1.5mm; text-align: center; width: 32mm; font-size: 9pt;">
-                                                المبلغ<br><small>Amount</small></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach($viewingPurchase->items as $index => $item)
-                                            <tr>
-                                                <td
-                                                    style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">
-                                                    {{ $index + 1 }}</td>
-                                                <td
-                                                    style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">
-                                                    {{ $item->product->sku ?? '' }}</td>
-                                                <td style="border: 1px solid #3491d1; padding: 1.5mm; font-size: 9.5pt;">
-                                                    {{ $item->product->name }}</td>
-                                                <td
-                                                    style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">
-                                                    {{ number_format($item->qty, 0) }}</td>
-                                                <td
-                                                    style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">
-                                                    {{ number_format($item->cost, $viewingPurchase->currency === 'USD' ? 2 : 0) }}</td>
-                                                <td
-                                                    style="border: 1px solid #3491d1; padding: 1.5mm; text-align: center; font-size: 9.5pt;">
-                                                    {{ number_format($item->subtotal, $viewingPurchase->currency === 'USD' ? 2 : 0) }}</td>
-                                            </tr>
-                                        @endforeach
-                                        @for($i = count($viewingPurchase->items); $i < 6; $i++)
-                                            <tr>
-                                                <td style="border: 1px solid #3491d1; height: 9mm;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                                <td style="border: 1px solid #3491d1;"></td>
-                                            </tr>
-                                        @endfor
-                                    </tbody>
-                                </table>
-
-                                <!-- Final Words -->
-                                <div
-                                    style="font-size: 10pt; font-weight: 700; text-align: center; margin-top: 3mm; margin-bottom: 2mm;">
-                                    {{ \App\Services\ArabicAmountToWords::translate($viewingPurchase->grand_total, $viewingPurchase->currency) }}
-                                </div>
-
-                                <!-- Summary Row -->
-                                <div
-                                    style="display: grid; grid-template-columns: 1fr 40mm 32mm; border: 2px solid #3491d1; align-items: center;">
-                                    <div style="padding: 1.5mm 3mm; font-size: 9pt; font-weight: 700; text-align: center;">
-                                    </div>
-                                    <div
-                                        style="background-color: #deeaf6; padding: 1.5mm; text-align: center; font-weight: 900; border-right: 2px solid #3491d1; border-left: 2px solid #3491d1;">
-                                        {{ $viewingPurchase->currency === 'USD' ? 'Total USD / المجموع' : 'Total Dinar / المجموع' }}
-                                    </div>
-                                    <div style="padding: 1.5mm; text-align: center; font-weight: 900; font-size: 11pt;">
-                                        {{ number_format($viewingPurchase->grand_total, $viewingPurchase->currency === 'USD' ? 2 : 0) }}
-                                    </div>
-                                </div>
-
-                                <!-- Terms -->
-                                <div
-                                    style="display: flex; justify-content: space-between; font-size: 9pt; font-weight: 700; color: #0b2b4a; margin-top: 5mm; border-top: 2px solid #3491d1; padding-top: 2mm;">
-                                    <div>Goods once sold will not be taken back.<br>All Electrical items carry no guarantee.
-                                    </div>
-                                    <div style="text-align: center; color: #0056b3; font-size: 10pt;">TRUST OF<br>GENUINE
-                                        PARTS</div>
-                                    <div style="text-align: left;">البضاعة المباعة لا ترد ولا تستبدل<br>كافة الأدوات
-                                        الكهربائية غير مضمونة</div>
-                                </div>
-
-                                <!-- Signatures -->
-                                <div
-                                    style="display: flex; justify-content: space-between; padding: 5mm 10mm 0; font-size: 10pt; font-weight: 700;">
-                                    <div>Storekeeper's Signature / توقيع الأمين</div>
-                                    <div>For ALI HADI TRADING CO.</div>
+                            </div>
+                        @else
+                            <div class="text-center p-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
                                 </div>
                             </div>
                         @endif
@@ -781,37 +1011,114 @@ new class extends Component {
     <!-- Hidden Iframe for Printing -->
     <iframe id="printFrame" style="display:none;"></iframe>
 
+    <!-- Print/Download Modal -->
+    <div class="modal fade" id="printDownloadModal" tabindex="-1" aria-labelledby="printDownloadModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-radius: 12px; overflow: hidden;">
+                <div class="modal-header" style="background: #32267d; color: white; border: none;">
+                    <h5 class="modal-title" id="printDownloadModalLabel">
+                        ✅ تم حفظ فاتورة الشراء
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center" style="padding: 30px;">
+                    <p style="font-size: 13pt; margin-bottom: 25px; color: #444;">
+                        فاتورة شراء <strong id="modalPurchaseId" style="color: #32267d;"></strong> — ماذا تريد أن تفعل؟
+                    </p>
+                    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                        <a id="btnPrintInvoice" href="#" target="_blank"
+                           style="background: #32267d; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 11pt;">
+                            🖨️ طباعة (بدون خلفية)
+                        </a>
+                        <a id="btnDownloadInvoice" href="#" target="_blank"
+                           style="background: #1a7d4e; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 11pt;">
+                            ⬇️ تحميل PDF (مع الخلفية)
+                        </a>
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"
+                                style="padding: 12px 25px; border-radius: 8px; font-size: 11pt;">
+                            تخطي
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @script
     <script>
-        document.addEventListener('livewire:init', () => {
-            // Purchase Create Modal
-            Livewire.on('open-purchase-modal', () => {
-                var myModalEl = document.getElementById('purchaseModal');
-                var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
-                modal.show();
-            });
-            Livewire.on('close-purchase-modal', () => {
-                var myModalEl = document.getElementById('purchaseModal');
-                var modal = bootstrap.Modal.getInstance(myModalEl);
-                if (modal) modal.hide();
-            });
-
-            // View Purchase Modal
-            Livewire.on('open-view-modal', () => {
-                var myModalEl = document.getElementById('viewModal');
-                var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
-                modal.show();
-            });
-
-            // Direct Printing Logic
-            Livewire.on('trigger-direct-print', (dataArray) => {
-                const data = dataArray[0];
-                const frame = document.getElementById('printFrame');
-                frame.src = data.url;
-                frame.onload = function () {
-                    frame.contentWindow.focus();
-                    frame.contentWindow.print();
-                };
-            });
+        $wire.on('open-purchase-modal', () => {
+            var myModalEl = document.getElementById('purchaseModal');
+            var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
+            modal.show();
         });
+        $wire.on('close-purchase-modal', () => {
+            var myModalEl = document.getElementById('purchaseModal');
+            var modal = bootstrap.Modal.getInstance(myModalEl);
+            if (modal) modal.hide();
+        });
+
+        // View Purchase Modal
+        $wire.on('open-view-modal', () => {
+            var myModalEl = document.getElementById('viewModal');
+            var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
+            modal.show();
+        });
+
+        // Direct Printing Logic
+        $wire.on('trigger-direct-print', (dataArray) => {
+            const data = dataArray[0];
+            const frame = document.getElementById('printFrame');
+            frame.src = data.url;
+            frame.onload = function () {
+                frame.contentWindow.focus();
+                frame.contentWindow.print();
+            };
+        });
+
+        // Auto-open Print/Download modal
+        $wire.on('purchase-saved', (dataArray) => {
+            const purchaseId = dataArray[0] ?? dataArray.id ?? dataArray;
+            const baseUrl = '/admin/purchases/' + purchaseId + '/print';
+
+            document.getElementById('modalPurchaseId').textContent = '#' + purchaseId;
+
+            document.getElementById('btnPrintInvoice').onclick = function(e) {
+                e.preventDefault();
+                window.directPrintUrl(baseUrl + '?autoprint=1');
+                bootstrap.Modal.getInstance(document.getElementById('printDownloadModal')).hide();
+            };
+
+            document.getElementById('btnDownloadInvoice').onclick = function(e) {
+                e.preventDefault();
+                window.directPrintUrl(baseUrl + '?autodownload=1');
+                bootstrap.Modal.getInstance(document.getElementById('printDownloadModal')).hide();
+            };
+
+            const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('printDownloadModal'));
+            modal.show();
+        });
+
+        // Payment Modal
+        $wire.on('open-payment-modal', () => {
+            let modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('paymentModal'));
+            modal.show();
+        });
+        $wire.on('close-payment-modal', () => {
+            let modal = bootstrap.Modal.getInstance(document.getElementById('paymentModal'));
+            if (modal) modal.hide();
+        });
+
+        window.directPrintUrl = function(url) {
+            const frame = document.getElementById('printFrame');
+            frame.src = url;
+            frame.onload = function() {
+                frame.contentWindow.focus();
+            };
+        }
+
+        window.directDownload = function(purchaseId) {
+            window.directPrintUrl('/admin/purchases/' + purchaseId + '/print?autodownload=1');
+        }
     </script>
+    @endscript
 </div>

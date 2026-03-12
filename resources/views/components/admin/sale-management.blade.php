@@ -44,6 +44,13 @@ new class extends Component {
     public $viewingPreviousBalance = 0;
     public $previous_currency = 'USD';
 
+    // Payment Modal Fields
+    public $selectedSaleId = null;
+    public $paymentTotal = 0;
+    public $paymentCurrency = 'USD';
+    public $paymentAmount = 0;
+    public $paymentAccountId = '';
+
     // Item Addition Fields
     public $selected_product_id;
     public $item_qty = 1;
@@ -447,9 +454,83 @@ new class extends Component {
 
     public function markAsPaid($id)
     {
+        $this->openPaymentModal($id);
+    }
+
+    public function openPaymentModal($id)
+    {
         $sale = Sale::findOrFail($id);
-        $sale->update(['payment_status' => 'paid']);
-        session()->flash('success', 'Document marked as paid.');
+        $this->selectedSaleId = $id;
+        $this->paymentTotal = $sale->grand_total;
+        $this->paymentCurrency = $sale->currency;
+        $this->paymentAmount = $sale->grand_total;
+        $this->paymentAccountId = \App\Models\FinancialAccount::where('is_active', true)
+            ->where('currency', $this->paymentCurrency)
+            ->first()?->id ?? '';
+
+        $this->dispatch('open-payment-modal');
+    }
+
+    public function getRemainingAmountProperty()
+    {
+        return max(0, $this->paymentTotal - (float)$this->paymentAmount);
+    }
+
+    public function submitPayment()
+    {
+        $this->validate([
+            'paymentAccountId' => 'required|exists:financial_accounts,id',
+            'paymentAmount' => 'required|numeric|min:0',
+        ]);
+
+        $sale = Sale::findOrFail($this->selectedSaleId);
+
+        DB::beginTransaction();
+        try {
+            $account = \App\Models\FinancialAccount::findOrFail($this->paymentAccountId);
+
+            // 1. Record in Treasury (Debit)
+            \App\Models\AccountLedger::create([
+                'account_id' => $this->paymentAccountId,
+                'date' => now()->format('Y-m-d'),
+                'description' => __('Payment for Sale') . ' #' . $sale->id . ' (' . $sale->customer->name . ')',
+                'debit' => $this->paymentAmount,
+                'credit' => 0,
+                'balance' => $account->current_balance + $this->paymentAmount,
+                'ref_type' => 'sale',
+                'ref_id' => $sale->id,
+                'created_by' => Auth::id(),
+            ]);
+            $account->increment('current_balance', $this->paymentAmount);
+
+            // 2. Credit Customer (Payment)
+            CustomerLedger::create([
+                'customer_id' => $sale->customer_id,
+                'date' => now()->format('Y-m-d'),
+                'type' => 'payment',
+                'description' => __('Payment for Sale') . ' #' . $sale->id,
+                'currency' => $sale->currency,
+                'exchange_rate' => $sale->exchange_rate,
+                'debit' => 0,
+                'credit' => $this->paymentAmount,
+                'balance' => 0, // This is usually calculated or relative
+                'ref_type' => 'sale',
+                'ref_id' => $sale->id,
+                'created_by' => Auth::id(),
+            ]);
+
+            // 3. Update Sale status if fully paid
+            if ($this->remainingAmount <= 0) {
+                $sale->update(['payment_status' => 'paid']);
+            }
+
+            DB::commit();
+            session()->flash('success', __('Payment recorded successfully.'));
+            $this->dispatch('close-payment-modal');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            session()->flash('error', __('Error recording payment: ') . $e->getMessage());
+        }
     }
 
     public function confirmConversion($id)
@@ -952,23 +1033,35 @@ new class extends Component {
 
                         .preview-info-grid {
                             display: grid;
-                            grid-template-columns: 1fr 1fr 1fr 1fr;
-                            gap: 3mm;
+                            grid-template-columns: 1.2fr 1fr 1fr;
+                            grid-template-rows: auto auto;
+                            gap: 2mm 3mm;
                             margin-bottom: 3mm;
                             font-weight: bold;
                             color: #32267d;
                             border: 1px solid #b0a8d8;
                             background: #f3f1fb;
-                            padding: 2mm;
+                            padding: 2.5mm;
                             border-radius: 1mm;
+                            align-items: center;
                             font-size: 10pt;
                             direction: rtl;
                         }
 
                         .preview-info-item {
                             display: flex;
-                            gap: 2mm;
-                            align-items: baseline;
+                            gap: 1.5mm;
+                            align-items: center;
+                        }
+
+                        .preview-info-item.id-cell {
+                            font-size: 16pt;
+                            font-weight: 400;
+                        }
+
+                        .preview-info-item.type-cell {
+                            justify-content: center;
+                            font-size: 11pt;
                         }
 
                         .preview-info-item label {
@@ -1092,13 +1185,15 @@ new class extends Component {
                                 <img src="{{ asset('assets/images/invois.png') }}" class="preview-background" alt="Invoice Background">
                                 <div class="preview-print-area">
                                     <div class="preview-info-grid">
-                                        <div class="preview-info-item"><label>رقم الفاتورة:</label> <span>{{ $viewingSale->id }}</span></div>
-                                        <div class="preview-info-item"><label>الاسم:</label> <span>{{ $viewingSale->customer->name }}</span></div>
-                                        <div class="preview-info-item"><label>الهاتف:</label> <span>{{ $viewingSale->customer->phone }}</span></div>
-                                        <div class="preview-info-item"><label>العنوان:</label> <span>{{ $viewingSale->customer->address }}</span></div>
+                                        <!-- Row 1 -->
+                                        <div class="preview-info-item id-cell"><span>{{ $viewingSale->id }}</span></div>
+                                        <div class="preview-info-item" style="justify-content: center;"><label>العنوان:</label> <span>{{ $viewingSale->customer->address }}</span></div>
+                                        <div class="preview-info-item" style="justify-content: flex-end;"><label>الاسم:</label> <span>{{ $viewingSale->customer->name }}</span></div>
+                                        
+                                        <!-- Row 2 -->
                                         <div class="preview-info-item"><label>التاريخ:</label> <span>{{ $viewingSale->date }}</span></div>
-                                        <div class="preview-info-item"><label>العملة:</label> <span>{{ $viewingSale->currency === 'USD' ? 'دولار امريكي' : 'دينار عراقي' }}</span></div>
-                                        <div class="preview-info-item"><label>نوع الفاتورة:</label> <span>{{ $typeLabel }}</span></div>
+                                        <div class="preview-info-item type-cell"><span>{{ $typeLabel }}</span></div>
+                                        <div class="preview-info-item" style="justify-content: flex-end;"><label>الهاتف:</label> <span>{{ $viewingSale->customer->phone }}</span></div>
                                     </div>
 
                                     <table class="preview-table">
@@ -1234,11 +1329,72 @@ new class extends Component {
                             ⬇️ تحميل PDF (مع الخلفية)
                         </a>
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal"
-                                style="padding: 12px 25px; border-radius: 8px; font-size: 11pt;">
+                                 style="padding: 12px 25px; border-radius: 8px; font-size: 11pt;">
                             تخطي
                         </button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payment Modal -->
+    <div wire:ignore.self class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0">
+                <div class="modal-header bg-success py-3">
+                    <h5 class="modal-title text-white" id="paymentModalLabel">
+                        <i class="ri-money-dollar-circle-line align-bottom me-1"></i> {{ __('Record Payment') }} - #{{ $selectedSaleId }}
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form wire:submit.prevent="submitPayment">
+                    <div class="modal-body p-4">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label fw-bold">{{ __('Total Amount') }}</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control bg-light fs-15 fw-semibold" value="{{ number_format($paymentTotal, $paymentCurrency === 'USD' ? 2 : 0) }}" readonly>
+                                    <span class="input-group-text bg-light fw-bold">{{ $paymentCurrency }}</span>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold">{{ __('Select Treasury / Box') }}</label>
+                                <select wire:model="paymentAccountId" class="form-select @error('paymentAccountId') is-invalid @enderror">
+                                    <option value="">{{ __('Select Treasury') }}</option>
+                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->get() as $fa)
+                                        <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
+                                    @endforeach
+                                </select>
+                                @error('paymentAccountId') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">{{ __('Paid Amount') }}</label>
+                                <div class="input-group">
+                                    <input type="number" step="{{ $paymentCurrency === 'USD' ? '0.01' : '1' }}" wire:model.live="paymentAmount" class="form-control @error('paymentAmount') is-invalid @enderror">
+                                    <span class="input-group-text">{{ $paymentCurrency }}</span>
+                                </div>
+                                @error('paymentAmount') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">{{ __('Remaining Balance') }}</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control bg-light {{ $this->remainingAmount > 0 ? 'text-danger fw-bold' : 'text-success fw-bold' }}" value="{{ number_format($this->remainingAmount, $paymentCurrency === 'USD' ? 2 : 0) }}" readonly>
+                                    <span class="input-group-text">{{ $paymentCurrency }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button type="button" class="btn btn-ghost-danger" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
+                        <button type="submit" class="btn btn-success px-4">
+                            <i class="ri-check-line align-bottom me-1"></i> {{ __('Confirm Payment') }}
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -1314,6 +1470,16 @@ new class extends Component {
 
                 const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('printDownloadModal'));
                 modal.show();
+            });
+
+            // Payment Modal Events
+            Livewire.on('open-payment-modal', () => {
+                var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('paymentModal'));
+                modal.show();
+            });
+            Livewire.on('close-payment-modal', () => {
+                var modal = bootstrap.Modal.getInstance(document.getElementById('paymentModal'));
+                if (modal) modal.hide();
             });
         });
 
