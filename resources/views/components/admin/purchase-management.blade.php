@@ -70,8 +70,23 @@ new class extends Component {
     {
         if ($id) {
             $product = Product::find($id);
-            $this->item_cost = $product->cost;
-            $this->item_price = $product->price;
+            if (!$product) return;
+
+            $product_cost = $product->cost;
+            $product_price = $product->price;
+            $product_currency = $product->currency ?? 'IQD';
+
+            // Convert product cost (in its base currency) to the purchase currency
+            if ($this->currency === $product_currency) {
+                $this->item_cost = $product_cost;
+                $this->item_price = $product_price;
+            } elseif ($this->currency === 'USD' && $product_currency === 'IQD') {
+                $this->item_cost = $this->exchange_rate > 0 ? round($product_cost / $this->exchange_rate, 2) : 0;
+                $this->item_price = $this->exchange_rate > 0 ? round($product_price / $this->exchange_rate, 2) : 0;
+            } elseif ($this->currency === 'IQD' && $product_currency === 'USD') {
+                $this->item_cost = round($product_cost * $this->exchange_rate, 0);
+                $this->item_price = round($product_price * $this->exchange_rate, 0);
+            }
         }
     }
 
@@ -160,13 +175,28 @@ new class extends Component {
                     'created_by' => Auth::id(),
                 ]);
 
-                // Update Product Cost and Price (Convert to IQD if purchase is in USD)
-                $costInIQD = ($this->currency === 'USD') ? ($item['cost'] * $this->exchange_rate) : $item['cost'];
-                $priceInIQD = ($this->currency === 'USD') ? ($item['price'] * $this->exchange_rate) : $item['price'];
+                // Update Product Cost and Price (Convert to product's base currency)
+                $product = Product::find($item['product_id']);
+                $product_currency = $product->currency ?? 'IQD';
 
-                Product::where('id', $item['product_id'])->update([
-                    'cost' => $costInIQD,
-                    'price' => $priceInIQD,
+                $finalCost = $item['cost'];
+                $finalPrice = $item['price'];
+
+                if ($this->currency !== $product_currency) {
+                    if ($this->currency === 'USD' && $product_currency === 'IQD') {
+                        // Purchase in USD, Product in IQD -> Convert to IQD
+                        $finalCost = $item['cost'] * $this->exchange_rate;
+                        $finalPrice = $item['price'] * $this->exchange_rate;
+                    } elseif ($this->currency === 'IQD' && $product_currency === 'USD') {
+                        // Purchase in IQD, Product in USD -> Convert to USD
+                        $finalCost = $this->exchange_rate > 0 ? ($item['cost'] / $this->exchange_rate) : 0;
+                        $finalPrice = $this->exchange_rate > 0 ? ($item['price'] / $this->exchange_rate) : 0;
+                    }
+                }
+
+                $product->update([
+                    'cost' => $finalCost,
+                    'price' => $finalPrice,
                 ]);
             }
 

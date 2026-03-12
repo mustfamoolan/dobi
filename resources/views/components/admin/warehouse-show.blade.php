@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 new class extends Component {
     public $warehouse;
     public $productSearch = '';
+    public $filter_category_id = '';
     public $targetProductId;
     public $adj_qty = 1;
     public $adj_type = 'in'; // 'in' or 'out'
@@ -92,12 +93,19 @@ new class extends Component {
     public function with()
     {
         return [
-            'products' => Product::where(function ($q) {
-                $q->where('name', 'like', '%' . $this->productSearch . '%')
-                    ->orWhere('sku', 'like', '%' . $this->productSearch . '%');
-            })
+            'products' => Product::whereHas('stockMovements', function($q) {
+                    $q->where('warehouse_id', $this->warehouse->id);
+                })
+                ->when($this->filter_category_id, function ($q) {
+                    $q->where('category_id', $this->filter_category_id);
+                })
+                ->where(function ($q) {
+                    $q->where('name', 'like', '%' . $this->productSearch . '%')
+                        ->orWhere('sku', 'like', '%' . $this->productSearch . '%');
+                })
                 ->where('is_active', true)
-                ->get()
+                ->get(),
+            'categories' => \App\Models\Category::all()
         ];
     }
 }; ?>
@@ -125,9 +133,15 @@ new class extends Component {
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h6 class="card-title mb-0">{{ __('Products in Warehouse') }}</h6>
-            <div class="w-25">
+            <div class="d-flex gap-2">
+                <select wire:model.live="filter_category_id" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">{{ __('All Categories') }}</option>
+                    @foreach($categories as $cat)
+                        <option value="{{ $cat->id }}">{{ $cat->name }}</option>
+                    @endforeach
+                </select>
                 <input type="search" wire:model.live="productSearch" class="form-control form-control-sm"
-                    placeholder="{{ __('Search Product...') }}">
+                    placeholder="{{ __('Search Product...') }}" style="width: auto;">
             </div>
         </div>
         <div class="card-body">
@@ -269,22 +283,24 @@ new class extends Component {
         </div>
     </div>
 
-    <script>
-        document.addEventListener('livewire:init', () => {
-            Livewire.on('open-edit-warehouse-modal', () => {
-                new bootstrap.Modal(document.getElementById('editWarehouseModal')).show();
-            });
-            Livewire.on('close-edit-warehouse-modal', () => {
-                var modal = bootstrap.Modal.getInstance(document.getElementById('editWarehouseModal'));
-                if (modal) modal.hide();
-            });
-            Livewire.on('open-adjustment-modal', () => {
-                new bootstrap.Modal(document.getElementById('adjustmentModal')).show();
-            });
-            Livewire.on('close-adjustment-modal', () => {
-                var modal = bootstrap.Modal.getInstance(document.getElementById('adjustmentModal'));
-                if (modal) modal.hide();
-            });
-        });
-    </script>
+@script
+<script>
+    $wire.on('open-edit-warehouse-modal', () => {
+        let modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('editWarehouseModal'));
+        modal.show();
+    });
+    $wire.on('close-edit-warehouse-modal', () => {
+        let modal = bootstrap.Modal.getInstance(document.getElementById('editWarehouseModal'));
+        if (modal) modal.hide();
+    });
+    $wire.on('open-adjustment-modal', () => {
+        let modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('adjustmentModal'));
+        modal.show();
+    });
+    $wire.on('close-adjustment-modal', () => {
+        let modal = bootstrap.Modal.getInstance(document.getElementById('adjustmentModal'));
+        if (modal) modal.hide();
+    });
+</script>
+@endscript
 </div>

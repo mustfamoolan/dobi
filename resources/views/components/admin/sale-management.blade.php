@@ -80,12 +80,17 @@ new class extends Component {
     {
         if ($id) {
             $product = Product::find($id);
-            $price_iqd = $product->price;
-            
-            if ($this->currency === 'USD' && $this->exchange_rate > 0) {
-                $this->item_price = round($price_iqd / $this->exchange_rate, 2);
-            } else {
-                $this->item_price = $price_iqd;
+            if (!$product) return;
+
+            $product_price = $product->price;
+            $product_currency = $product->currency ?? 'IQD';
+
+            if ($this->currency === $product_currency) {
+                $this->item_price = $product_price;
+            } elseif ($this->currency === 'USD' && $product_currency === 'IQD') {
+                $this->item_price = $this->exchange_rate > 0 ? round($product_price / $this->exchange_rate, 2) : 0;
+            } elseif ($this->currency === 'IQD' && $product_currency === 'USD') {
+                $this->item_price = round($product_price * $this->exchange_rate, 0);
             }
         }
     }
@@ -100,17 +105,18 @@ new class extends Component {
 
     public function updatedExchangeRate()
     {
-        // When exchange rate changes, we don't automatically convert existing prices
-        // as they might have been manually set for those items.
-        // But we update the 'default' addition price.
         if ($this->selected_product_id) {
             $product = Product::find($this->selected_product_id);
             if ($product) {
-                $price_iqd = $product->price;
-                if ($this->currency === 'USD' && $this->exchange_rate > 0) {
-                    $this->item_price = round($price_iqd / $this->exchange_rate, 2);
-                } else {
-                    $this->item_price = $price_iqd;
+                $product_price = $product->price;
+                $product_currency = $product->currency ?? 'IQD';
+
+                if ($this->currency === $product_currency) {
+                    $this->item_price = $product_price;
+                } elseif ($this->currency === 'USD' && $product_currency === 'IQD') {
+                    $this->item_price = $this->exchange_rate > 0 ? round($product_price / $this->exchange_rate, 2) : 0;
+                } elseif ($this->currency === 'IQD' && $product_currency === 'USD') {
+                    $this->item_price = round($product_price * $this->exchange_rate, 0);
                 }
             }
         }
@@ -122,11 +128,15 @@ new class extends Component {
         if ($this->selected_product_id) {
             $product = Product::find($this->selected_product_id);
             if ($product) {
-                $price_iqd = $product->price;
-                if ($this->currency === 'USD' && $this->exchange_rate > 0) {
-                    $this->item_price = round($price_iqd / $this->exchange_rate, 2);
-                } else {
-                    $this->item_price = $price_iqd;
+                $product_price = $product->price;
+                $product_currency = $product->currency ?? 'IQD';
+
+                if ($this->currency === $product_currency) {
+                    $this->item_price = $product_price;
+                } elseif ($this->currency === 'USD' && $product_currency === 'IQD') {
+                    $this->item_price = $this->exchange_rate > 0 ? round($product_price / $this->exchange_rate, 2) : 0;
+                } elseif ($this->currency === 'IQD' && $product_currency === 'USD') {
+                    $this->item_price = round($product_price * $this->exchange_rate, 0);
                 }
             }
         }
@@ -265,10 +275,17 @@ new class extends Component {
                 $product = Product::find($item['product_id']);
                 
                 // Calculate cost snapshot in the sale currency
-                // Assuming product->cost is always in IQD
-                $costInSaleCurrency = ($this->currency === 'USD') 
-                    ? ($product->cost / $this->exchange_rate) 
-                    : $product->cost;
+                $product_cost = $product->cost;
+                $product_currency = $product->currency ?? 'IQD';
+                $costInSaleCurrency = $product_cost;
+
+                if ($this->currency !== $product_currency) {
+                    if ($this->currency === 'USD' && $product_currency === 'IQD') {
+                        $costInSaleCurrency = $this->exchange_rate > 0 ? ($product_cost / $this->exchange_rate) : 0;
+                    } elseif ($this->currency === 'IQD' && $product_currency === 'USD') {
+                        $costInSaleCurrency = $product_cost * $this->exchange_rate;
+                    }
+                }
 
                 SaleItem::create([
                     'sale_id' => $sale->id,

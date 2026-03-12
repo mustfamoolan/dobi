@@ -14,9 +14,21 @@ new class extends Component {
     #[Url]
     public $search = '';
     public $productId;
-    public $name, $sku, $category_id, $cost = 0, $price = 0, $unit = 'Pcs', $stock_alert = 0, $is_active = true;
+    public $name, $sku, $category_id, $currency = 'IQD', $cost = 0, $price = 0, $unit = 'Pcs', $stock_alert = 0, $is_active = true;
     public $opening_stock = 0, $warehouse_id; // Only used during creation
     public $isEditMode = false;
+
+    // Stock Adjustment Properties
+    public $adj_product_id;
+    public $adj_warehouse_id = '';
+    public $adj_qty = 1;
+    public $adj_type = 'in';
+    public $adj_note = '';
+    public $adj_current_stock = 0;
+
+    // Filter Properties
+    public $filter_category_id = '';
+    public $filter_warehouse_id = '';
 
     protected $paginationTheme = 'bootstrap';
 
@@ -25,9 +37,63 @@ new class extends Component {
         $this->resetPage();
     }
 
+    public function updatingFilterCategoryId()
+    {
+        $this->resetPage();
+    }
+
+    public function updatingFilterWarehouseId()
+    {
+        $this->resetPage();
+    }
+
+    public function openAdjustmentModal($productId)
+    {
+        $this->reset(['adj_warehouse_id', 'adj_note', 'adj_current_stock']);
+        $this->adj_product_id = $productId;
+        $this->adj_qty = 1;
+        $this->adj_type = 'in';
+        $this->dispatch('open-adjustment-modal');
+    }
+
+    public function updatedAdjWarehouseId()
+    {
+        if ($this->adj_product_id && $this->adj_warehouse_id) {
+            $product = \App\Models\Product::find($this->adj_product_id);
+            $this->adj_current_stock = $product ? $product->stockInWarehouse($this->adj_warehouse_id) : 0;
+        } else {
+            $this->adj_current_stock = 0;
+        }
+    }
+
+    public function adjustStock()
+    {
+        $this->validate([
+            'adj_product_id' => 'required|exists:products,id',
+            'adj_warehouse_id' => 'required|exists:warehouses,id',
+            'adj_qty' => 'required|numeric|min:0.001',
+            'adj_type' => 'required|in:in,out',
+        ]);
+
+        StockMovement::create([
+            'product_id' => $this->adj_product_id,
+            'warehouse_id' => $this->adj_warehouse_id,
+            'qty_in' => $this->adj_type == 'in' ? $this->adj_qty : 0,
+            'qty_out' => $this->adj_type == 'out' ? $this->adj_qty : 0,
+            'ref_type' => 'adjustment',
+            'note' => $this->adj_note ?: __('Stock Adjustment'),
+            'created_by' => Auth::id(),
+        ]);
+
+        session()->flash('success', __('Stock adjusted successfully.'));
+        $this->dispatch('close-adjustment-modal');
+        $this->reset(['adj_product_id', 'adj_warehouse_id', 'adj_qty', 'adj_type', 'adj_note', 'adj_current_stock']);
+    }
+
     public function openModal()
     {
-        $this->reset(['name', 'sku', 'category_id', 'cost', 'price', 'unit', 'stock_alert', 'is_active', 'opening_stock', 'productId', 'isEditMode']);
+        $this->reset(['name', 'sku', 'category_id', 'currency', 'cost', 'price', 'unit', 'stock_alert', 'is_active', 'opening_stock', 'productId', 'isEditMode']);
+        $this->currency = 'IQD'; // Default currency
         $this->dispatch('open-product-modal');
     }
 
@@ -38,6 +104,7 @@ new class extends Component {
         $this->name = $product->name;
         $this->sku = $product->sku;
         $this->category_id = $product->category_id;
+        $this->currency = $product->currency ?? 'IQD';
         $this->cost = $product->cost;
         $this->price = $product->price;
         $this->unit = $product->unit;
@@ -53,6 +120,7 @@ new class extends Component {
             'name' => 'required|string|max:255',
             'sku' => 'nullable|string|max:100|unique:products,sku,' . $this->productId,
             'category_id' => 'required|exists:categories,id',
+            'currency' => 'required|in:USD,IQD',
             'cost' => 'required|numeric|min:0',
             'price' => 'required|numeric|min:0',
             'stock_alert' => 'required|numeric|min:0',
@@ -64,6 +132,7 @@ new class extends Component {
             'name' => $this->name,
             'sku' => $this->sku,
             'category_id' => $this->category_id,
+            'currency' => $this->currency,
             'cost' => $this->cost,
             'price' => $this->price,
             'unit' => $this->unit,
@@ -111,6 +180,15 @@ new class extends Component {
     public function render(): mixed
     {
         $products = Product::with('category')
+            ->when($this->filter_category_id, function($q) {
+                $q->where('category_id', $this->filter_category_id);
+            })
+            ->when($this->filter_warehouse_id, function($q) {
+                // Return products that have stock movements in the selected warehouse
+                $q->whereHas('stockMovements', function($q2) {
+                    $q2->where('warehouse_id', $this->filter_warehouse_id);
+                });
+            })
             ->where(function ($q) {
                 $q->where('name', 'like', '%' . $this->search . '%')
                     ->orWhere('sku', 'like', '%' . $this->search . '%');
@@ -130,11 +208,23 @@ new class extends Component {
 
 <div>
     <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
             <h5 class="card-title mb-0">{{ __('Product Management') }}</h5>
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <select wire:model.live="filter_category_id" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">{{ __('All Categories') }}</option>
+                    @foreach(\App\Models\Category::all() as $cat)
+                        <option value="{{ $cat->id }}">{{ $cat->name }}</option>
+                    @endforeach
+                </select>
+                <select wire:model.live="filter_warehouse_id" class="form-select form-select-sm" style="width: auto;">
+                    <option value="">{{ __('All Warehouses') }}</option>
+                    @foreach(\App\Models\Warehouse::where('is_active', true)->get() as $wh)
+                        <option value="{{ $wh->id }}">{{ $wh->name }}</option>
+                    @endforeach
+                </select>
                 <input type="search" wire:model.live="search" class="form-control form-control-sm"
-                    placeholder="{{ __('Search Products...') }}">
+                    placeholder="{{ __('Search Products...') }}" style="width: auto;">
                 <button wire:click="openModal" class="btn btn-primary btn-sm">
                     <i class="ri-add-line align-bottom me-1"></i> {{ __('Add Product') }}
                 </button>
@@ -190,8 +280,8 @@ new class extends Component {
                                         @endforeach
                                     </div>
                                 </td>
-                                <td>{{ number_format($product->cost, 0) }}</td>
-                                <td>{{ number_format($product->price, 0) }}</td>
+                                <td>{{ number_format($product->cost, $product->currency === 'USD' ? 2 : 0) }} {{ $product->currency }}</td>
+                                <td>{{ number_format($product->price, $product->currency === 'USD' ? 2 : 0) }} {{ $product->currency }}</td>
                                 <td>
                                     <span class="badge {{ $product->is_active ? 'bg-success' : 'bg-secondary' }}">
                                         {{ $product->is_active ? __('Active') : __('Inactive') }}
@@ -201,6 +291,9 @@ new class extends Component {
                                     <a href="{{ route('admin.products.history', $product->id) }}" class="btn btn-sm btn-soft-warning" title="{{ __('Stock History') }}">
                                         <i class="ri-history-line"></i>
                                     </a>
+                                    <button wire:click="openAdjustmentModal({{ $product->id }})" class="btn btn-sm btn-soft-primary" title="{{ __('Adjust Stock') }}">
+                                        <i class="ri-settings-4-line"></i>
+                                    </button>
                                     <button wire:click="edit({{ $product->id }})" class="btn btn-sm btn-soft-info" title="{{ __('Edit') }}"><i
                                             class="ri-edit-line"></i></button>
                                     <button wire:click="delete({{ $product->id }})"
@@ -259,19 +352,27 @@ new class extends Component {
                                 <label class="form-label">{{ __('Unit') }}</label>
                                 <input type="text" wire:model="unit" class="form-control">
                             </div>
-                            <div class="col-md-4 mb-3">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">{{ __('Currency') }}</label>
+                                <select wire:model="currency" class="form-select @error('currency') is-invalid @enderror">
+                                    <option value="USD">USD</option>
+                                    <option value="IQD">IQD</option>
+                                </select>
+                                @error('currency') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="col-md-3 mb-3">
                                 <label class="form-label">{{ __('Cost Price') }}</label>
-                                <input type="number" step="1" wire:model="cost"
+                                <input type="number" step="{{ $currency === 'USD' ? '0.01' : '1' }}" wire:model="cost"
                                     class="form-control @error('cost') is-invalid @enderror">
                                 @error('cost') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
-                            <div class="col-md-4 mb-3">
+                            <div class="col-md-3 mb-3">
                                 <label class="form-label">{{ __('Selling Price') }}</label>
-                                <input type="number" step="1" wire:model="price"
+                                <input type="number" step="{{ $currency === 'USD' ? '0.01' : '1' }}" wire:model="price"
                                     class="form-control @error('price') is-invalid @enderror">
                                 @error('price') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
-                            <div class="col-md-4 mb-3">
+                            <div class="col-md-3 mb-3">
                                 <label class="form-label">{{ __('Stock Alert Level') }}</label>
                                 <input type="number" step="1" wire:model="stock_alert"
                                     class="form-control @error('stock_alert') is-invalid @enderror">
@@ -314,17 +415,96 @@ new class extends Component {
         </div>
     </div>
 
-    <script>
-        document.addEventListener('livewire:init', () => {
-            Livewire.on('open-product-modal', () => {
-                var myModal = new bootstrap.Modal(document.getElementById('productModal'));
-                myModal.show();
-            });
-            Livewire.on('close-product-modal', () => {
-                var myModalEl = document.getElementById('productModal');
-                var modal = bootstrap.Modal.getInstance(myModalEl);
-                if (modal) modal.hide();
-            });
-        });
-    </script>
+    <!-- Stock Adjustment Modal -->
+    <div wire:ignore.self class="modal fade" id="adjustmentModal" tabindex="-1" aria-labelledby="adjustmentModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="adjustmentModalLabel">{{ __('Stock Adjustment') }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form wire:submit.prevent="adjustStock">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Select Warehouse') }}</label>
+                            <select wire:model.live="adj_warehouse_id" class="form-select @error('adj_warehouse_id') is-invalid @enderror">
+                                <option value="">-- {{ __('Select Warehouse') }} --</option>
+                                @foreach(\App\Models\Warehouse::where('is_active', true)->get() as $wh)
+                                    <option value="{{ $wh->id }}">{{ $wh->name }}</option>
+                                @endforeach
+                            </select>
+                            @error('adj_warehouse_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                        </div>
+
+                        @if($adj_warehouse_id)
+                        <div class="alert alert-info py-2 mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>{{ __('Current Quantity in Warehouse') }}:</span>
+                                <strong>{{ (float) $adj_current_stock }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>{{ __('Adjustment Quantity') }}:</span>
+                                <strong class="{{ $adj_type == 'in' ? 'text-success' : 'text-danger' }}">
+                                    {{ $adj_type == 'in' ? '+' : '-' }}{{ (float) ($adj_qty ?: 0) }}
+                                </strong>
+                            </div>
+                            <hr class="my-1 border-info">
+                            <div class="d-flex justify-content-between">
+                                <span>{{ __('Quantity After') }}:</span>
+                                <strong>
+                                    {{ (float) ($adj_type == 'in' ? $adj_current_stock + (float) ($adj_qty ?: 0) : $adj_current_stock - (float) ($adj_qty ?: 0)) }}
+                                </strong>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Adjustment Type') }}</label>
+                            <select wire:model.live="adj_type" class="form-select">
+                                <option value="in">{{ __('Adjustment In') }} (+)</option>
+                                <option value="out">{{ __('Adjustment Out') }} (-)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Adjustment Qty') }}</label>
+                            <input type="number" step="0.001" wire:model.live="adj_qty" class="form-control  @error('adj_qty') is-invalid @enderror">
+                            @error('adj_qty') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Note') }}</label>
+                            <textarea wire:model="adj_note" class="form-control"></textarea>
+                        </div>
+                        @else
+                            <p class="text-muted text-center my-4">{{ __('Please select a warehouse first to adjust stock.') }}</p>
+                        @endif
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
+                        <button type="submit" class="btn btn-primary" @if(!$adj_warehouse_id) disabled @endif>{{ __('Adjust Stock') }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+@script
+<script>
+    $wire.on('open-product-modal', () => {
+        let modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('productModal'));
+        modal.show();
+    });
+    $wire.on('close-product-modal', () => {
+        let modal = bootstrap.Modal.getInstance(document.getElementById('productModal'));
+        if (modal) modal.hide();
+    });
+    $wire.on('open-adjustment-modal', () => {
+        let modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('adjustmentModal'));
+        modal.show();
+    });
+    $wire.on('close-adjustment-modal', () => {
+        let modal = bootstrap.Modal.getInstance(document.getElementById('adjustmentModal'));
+        if (modal) modal.hide();
+    });
+</script>
+@endscript
 </div>
