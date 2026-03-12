@@ -437,15 +437,15 @@
             <div class="table-container-pre">
                 <!-- Info Grid (Two rows - 3 columns) -->
                 <div class="info-grid">
-                    <!-- Row 1 -->
-                    <div class="info-item id-cell"><span class="data-no"></span></div>
+                    <!-- Row 1 (Right to Left) -->
+                    <div class="info-item" style="justify-content: flex-start;"><label>الاسم:</label> <span class="data-customer"></span></div>
                     <div class="info-item" style="justify-content: center;"><label>العنوان:</label> <span class="data-address"></span></div>
-                    <div class="info-item" style="justify-content: flex-end;"><label>الاسم:</label> <span class="data-customer"></span></div>
+                    <div class="info-item id-cell" style="justify-content: flex-end;"><span class="data-no"></span></div>
                     
-                    <!-- Row 2 -->
-                    <div class="info-item"><label>التاريخ:</label> <span class="data-date"></span></div>
+                    <!-- Row 2 (Right to Left) -->
+                    <div class="info-item" style="justify-content: flex-start;"><label>الهاتف:</label> <span class="data-phone"></span></div>
                     <div class="info-item type-cell"><span class="data-type"></span></div>
-                    <div class="info-item" style="justify-content: flex-end;"><label>الهاتف:</label> <span class="data-phone"></span></div>
+                    <div class="info-item" style="justify-content: flex-end;"><label>التاريخ:</label> <span class="data-date"></span></div>
                 </div>
 
                 <table class="invoice-table">

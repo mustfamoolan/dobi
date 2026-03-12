@@ -1185,15 +1185,15 @@ new class extends Component {
                                 <img src="{{ asset('assets/images/invois.png') }}" class="preview-background" alt="Invoice Background">
                                 <div class="preview-print-area">
                                     <div class="preview-info-grid">
-                                        <!-- Row 1 -->
-                                        <div class="preview-info-item id-cell"><span>{{ $viewingSale->id }}</span></div>
+                                        <!-- Row 1 (Right to Left) -->
+                                        <div class="preview-info-item" style="justify-content: flex-start;"><label>الاسم:</label> <span>{{ $viewingSale->customer->name }}</span></div>
                                         <div class="preview-info-item" style="justify-content: center;"><label>العنوان:</label> <span>{{ $viewingSale->customer->address }}</span></div>
-                                        <div class="preview-info-item" style="justify-content: flex-end;"><label>الاسم:</label> <span>{{ $viewingSale->customer->name }}</span></div>
+                                        <div class="preview-info-item id-cell" style="justify-content: flex-end;"><span>{{ $viewingSale->id }}</span></div>
                                         
-                                        <!-- Row 2 -->
-                                        <div class="preview-info-item"><label>التاريخ:</label> <span>{{ $viewingSale->date }}</span></div>
+                                        <!-- Row 2 (Right to Left) -->
+                                        <div class="preview-info-item" style="justify-content: flex-start;"><label>الهاتف:</label> <span>{{ $viewingSale->customer->phone }}</span></div>
                                         <div class="preview-info-item type-cell"><span>{{ $typeLabel }}</span></div>
-                                        <div class="preview-info-item" style="justify-content: flex-end;"><label>الهاتف:</label> <span>{{ $viewingSale->customer->phone }}</span></div>
+                                        <div class="preview-info-item" style="justify-content: flex-end;"><label>التاريخ:</label> <span>{{ $viewingSale->date }}</span></div>
                                     </div>
 
                                     <table class="preview-table">
