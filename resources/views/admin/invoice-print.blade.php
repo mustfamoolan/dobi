@@ -518,7 +518,6 @@
                 page.querySelector('.data-type').textContent = data.type_label;
                 page.querySelector('.data-phone').textContent = data.customer.phone;
                 page.querySelector('.data-address').textContent = data.customer.address;
-                page.querySelector('.data-currency').textContent = data.currency === 'USD' ? 'دولار امريكي' : 'دينار عراقي';
 
                 // Fill Items
                 const tbody = page.querySelector('.data-items');
