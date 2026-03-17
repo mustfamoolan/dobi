@@ -700,7 +700,13 @@ new class extends Component {
                     <tbody>
                         @foreach($sales as $sale)
                             <tr>
-                                <td>#{{ $sale->id }}</td>
+                                <td>
+                                    @php
+                                        $prefix = $sale->type == 'invoice' ? 'INV-' : ($sale->type == 'quotation' ? 'QUO-' : 'PRO-');
+                                        $formattedId = $prefix . str_pad($sale->id, 3, '0', STR_PAD_LEFT);
+                                    @endphp
+                                    {{ $formattedId }}
+                                </td>
                                 <td>{{ $sale->date }}</td>
                                 <td>{{ $sale->customer->name }}</td>
                                 <td>
@@ -1185,10 +1191,14 @@ new class extends Component {
                                 <img src="{{ asset('assets/images/invois.png') }}" class="preview-background" alt="Invoice Background">
                                 <div class="preview-print-area">
                                     <div class="preview-info-grid">
+                                        @php
+                                            $idPrefix = $viewingSale->type == 'invoice' ? 'INV-' : ($viewingSale->type == 'quotation' ? 'QUO-' : 'PRO-');
+                                            $formattedViewingId = $idPrefix . str_pad($viewingSale->id, 3, '0', STR_PAD_LEFT);
+                                        @endphp
                                         <!-- Row 1 (Right to Left) -->
                                         <div class="preview-info-item" style="justify-content: flex-start;"><label>الاسم:</label> <span>{{ $viewingSale->customer->name }}</span></div>
                                         <div class="preview-info-item" style="justify-content: center;"><label>العنوان:</label> <span>{{ $viewingSale->customer->address }}</span></div>
-                                        <div class="preview-info-item id-cell" style="justify-content: flex-end;"><span>{{ $viewingSale->id }}</span></div>
+                                        <div class="preview-info-item id-cell" style="justify-content: flex-end;"><span>{{ $formattedViewingId }}</span></div>
                                         
                                         <!-- Row 2 (Right to Left) -->
                                         <div class="preview-info-item" style="justify-content: flex-start;"><label>الهاتف:</label> <span>{{ $viewingSale->customer->phone }}</span></div>

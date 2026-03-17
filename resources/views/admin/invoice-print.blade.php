@@ -9,9 +9,13 @@
         $previousBalance = $model->customer->getBalanceBeforeSale($model->id, $model->currency);
     }
 
+    @php
+        $idPrefix = $type == 'sale' ? ($model->type == 'invoice' ? 'INV-' : ($model->type == 'quotation' ? 'QUO-' : 'PRO-')) : 'PUR-';
+        $formattedId = $idPrefix . str_pad($model->id, 3, '0', STR_PAD_LEFT);
+    @endphp
     // Transform model to JSON for the JS printer
     $invoiceData = [
-        'id' => $model->id,
+        'id' => $formattedId,
         'type_label' => $typeLabel,
         'date' => $model->date,
         'customer' => [
@@ -48,7 +52,7 @@
 
 <head>
     <meta charset="utf-8" />
-    <title>Invoice #{{ $model->id }}</title>
+    <title>Invoice #{{ $formattedId }}</title>
 
     <!-- PDF Generation Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
@@ -653,7 +657,7 @@
             }
 
             document.body.classList.remove('download-mode');
-            pdf.save('invoice-{{ $model->id }}.pdf');
+            pdf.save('{{ $formattedId }}.pdf');
         }
     </script>
 </body>

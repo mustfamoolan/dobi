@@ -436,7 +436,7 @@ new class extends Component {
                     <tbody>
                         @foreach($purchases as $purchase)
                             <tr>
-                                <td>{{ $purchase->id }}</td>
+                                <td>PUR-{{ str_pad($purchase->id, 3, '0', STR_PAD_LEFT) }}</td>
                                 <td>{{ $purchase->date }}</td>
                                 <td>{{ $purchase->supplier->name }}</td>
                                 <td>
@@ -918,10 +918,13 @@ new class extends Component {
                                 <img src="{{ asset('assets/images/invois.png') }}" class="preview-background" alt="Invoice Background">
                                 <div class="preview-print-area">
                                     <div class="preview-info-grid">
+                                        @php
+                                            $formattedPurchaseId = 'PUR-' . str_pad($viewingPurchase->id, 3, '0', STR_PAD_LEFT);
+                                        @endphp
                                         <!-- Row 1 (Right to Left) -->
                                         <div class="preview-info-item" style="justify-content: flex-start;"><label>الاسم:</label> <span>{{ $viewingPurchase->supplier->name }}</span></div>
                                         <div class="preview-info-item" style="justify-content: center;"><label>العنوان:</label> <span>{{ $viewingPurchase->supplier->address }}</span></div>
-                                        <div class="preview-info-item id-cell" style="justify-content: flex-end;"><span>{{ $viewingPurchase->id }}</span></div>
+                                        <div class="preview-info-item id-cell" style="justify-content: flex-end;"><span>{{ $formattedPurchaseId }}</span></div>
                                         
                                         <!-- Row 2 (Right to Left) -->
                                         <div class="preview-info-item" style="justify-content: flex-start;"><label>الهاتف:</label> <span>{{ $viewingPurchase->supplier->phone }}</span></div>
