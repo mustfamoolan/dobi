@@ -163,7 +163,7 @@ new class extends Component {
                                         $displayCurrency = $this->currency ?: $originalCurrency;
                                     @endphp
                                     <tr>
-                                        <td>#{{ $purchase->id }}</td>
+                                        <td>PUR-{{ str_pad($purchase->id, 3, '0', STR_PAD_LEFT) }}</td>
                                         <td>{{ $purchase->date }}</td>
                                         <td>{{ $purchase->supplier->name ?? 'N/A' }}</td>
                                         <td>

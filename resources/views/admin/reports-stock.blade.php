@@ -1,5 +1,7 @@
 @extends('partials.layouts.master')
-@section('title', __('Stock Alert Report'))
+@section('title', __('Stock Report'))
 @section('content')
-    <livewire:admin.stock-report />
+    <div class="page-content">
+        <livewire:admin.stock-report />
+    </div>
 @endsection

@@ -20,6 +20,8 @@ new class extends Component {
 
     public $search = '';
     public $showCreateModal = false;
+    public $editingId = null;
+    public $confirmDeleteId = null;
 
     // Purchase Form Fields
     public $date;
@@ -64,7 +66,7 @@ new class extends Component {
 
     public function openCreateModal()
     {
-        $this->reset(['supplier_id', 'warehouse_id', 'items', 'notes', 'selected_product_id', 'item_qty', 'item_cost', 'payment_status']);
+        $this->reset(['supplier_id', 'warehouse_id', 'items', 'notes', 'selected_product_id', 'item_qty', 'item_cost', 'payment_status', 'editingId']);
         $this->date = now()->format('Y-m-d');
         // Default to first warehouse
         $this->warehouse_id = \App\Models\Warehouse::first()->id ?? null;
@@ -146,11 +148,19 @@ new class extends Component {
         ]);
 
         try {
-            DB::beginTransaction();
             $total = $this->total;
 
-            // 1. Create Purchase record
-            $purchase = Purchase::create([
+            if ($this->editingId) {
+                $purchase = Purchase::findOrFail($this->editingId);
+                $this->revertPurchase($purchase);
+                $purchase->items()->delete();
+            } else {
+                $purchase = new Purchase();
+                $purchase->created_by = Auth::id();
+            }
+
+            // 1. Update/Create Purchase record
+            $purchase->fill([
                 'date' => $this->date,
                 'supplier_id' => $this->supplier_id,
                 'warehouse_id' => $this->warehouse_id,
@@ -160,8 +170,8 @@ new class extends Component {
                 'grand_total' => $total,
                 'payment_status' => $this->payment_status,
                 'notes' => $this->notes,
-                'created_by' => Auth::id(),
             ]);
+            $purchase->save();
 
             // 2. Create Items & Stock Movements
             foreach ($this->items as $item) {
@@ -262,8 +272,9 @@ new class extends Component {
             }
 
             DB::commit();
-            session()->flash('success', 'Purchase invoice created successfully.');
+            session()->flash('success', 'Purchase invoice ' . ($this->editingId ? 'updated' : 'created') . ' successfully.');
             $this->dispatch('close-purchase-modal');
+            $this->editingId = null;
             $this->dispatch('purchase-saved', id: $purchase->id);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -373,6 +384,77 @@ new class extends Component {
         $this->dispatch('open-view-modal');
     }
 
+    public function editPurchase($id)
+    {
+        $purchase = Purchase::with('items')->findOrFail($id);
+        $this->editingId = $id;
+        $this->date = $purchase->date;
+        $this->supplier_id = $purchase->supplier_id;
+        $this->warehouse_id = $purchase->warehouse_id;
+        $this->currency = $purchase->currency;
+        $this->exchange_rate = $purchase->exchange_rate;
+        $this->notes = $purchase->notes;
+        $this->payment_status = $purchase->payment_status;
+        
+        $this->items = [];
+        foreach ($purchase->items as $item) {
+            $this->items[] = [
+                'product_id' => $item->product_id,
+                'name' => $item->product->name,
+                'qty' => $item->qty,
+                'cost' => $item->cost,
+                'price' => $item->product->price,
+                'subtotal' => $item->subtotal,
+            ];
+        }
+        
+        $this->dispatch('open-purchase-modal');
+    }
+
+    public function confirmDelete($id)
+    {
+        $this->confirmDeleteId = $id;
+        $this->dispatch('open-delete-modal-purchase');
+    }
+
+    public function deletePurchase($id = null)
+    {
+        $id = $id ?: $this->confirmDeleteId;
+        if (!$id) return;
+
+        DB::transaction(function () use ($id) {
+            $purchase = Purchase::findOrFail($id);
+            $this->revertPurchase($purchase);
+            $purchase->items()->delete();
+            $purchase->delete();
+        });
+
+        $this->dispatch('close-delete-modal-purchase');
+        $this->confirmDeleteId = null;
+        session()->flash('success', __('Purchase deleted successfully and all balances reverted.'));
+    }
+
+    private function revertPurchase($purchase)
+    {
+        // 1. Revert Stock
+        StockMovement::where('ref_type', 'purchase')->where('ref_id', $purchase->id)->delete();
+        
+        // 2. Revert Supplier Ledger
+        SupplierLedger::where('ref_type', 'purchase')->where('ref_id', $purchase->id)->delete();
+        
+        // 3. Revert Treasury (Account Ledger)
+        $accountEntries = \App\Models\AccountLedger::where('ref_type', 'purchase')->where('ref_id', $purchase->id)->get();
+        foreach ($accountEntries as $entry) {
+            $account = \App\Models\FinancialAccount::find($entry->account_id);
+            if ($account) {
+                // If it was a credit (money out), increment balance.
+                $account->increment('current_balance', $entry->credit);
+                $account->decrement('current_balance', $entry->debit);
+            }
+            $entry->delete();
+        }
+    }
+
     public function directPrint($id)
     {
         $this->dispatch('trigger-direct-print', ['url' => route('admin.purchases.print', $id)]);
@@ -467,6 +549,12 @@ new class extends Component {
                                         <button wire:click="viewPurchase({{ $purchase->id }})"
                                             class="btn btn-sm btn-soft-info" title="{{ __('View Details') }}"><i
                                                 class="ri-eye-line"></i></button>
+                                        <button wire:click="editPurchase({{ $purchase->id }})" class="btn btn-sm btn-soft-warning" title="{{ __('Edit') }}">
+                                            <i class="ri-edit-line"></i>
+                                        </button>
+                                        <button wire:click="confirmDelete({{ $purchase->id }})" class="btn btn-sm btn-soft-danger" title="{{ __('Delete') }}">
+                                            <i class="ri-delete-bin-line"></i>
+                                        </button>
                                         @if($purchase->payment_status !== 'paid')
                                             <button wire:click="markAsPaid({{ $purchase->id }})"
                                                 class="btn btn-sm btn-soft-success" title="{{ __('Mark as Paid') }}">
@@ -492,7 +580,10 @@ new class extends Component {
         <div class="modal-dialog modal-xl modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="purchaseModalLabel">{{ __('New Purchase Invoice') }}</h5>
+                    <h5 class="modal-title" id="purchaseModalLabel">
+                        @if($editingId) {{ __('Edit') }} @else {{ __('New') }} @endif
+                        {{ __('Purchase Invoice') }}
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form wire:submit.prevent="save">
@@ -1011,6 +1102,30 @@ new class extends Component {
         </div>
     </div>
 
+    <!-- Delete Modal -->
+    <div wire:ignore.self class="modal fade zoomIn" id="deletePurchaseModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mt-2 text-center">
+                        <i class="ri-delete-bin-line display-1 text-danger"></i>
+                        <div class="mt-4 pt-2 fs-15 mx-4 mx-sm-5">
+                            <h4>{{ __('Are you sure?') }}</h4>
+                            <p class="text-muted mx-4 mb-0">{{ __('Are you sure you want to remove this record? This will revert all stock and financial impacts.') }}</p>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 justify-content-center mt-4 mb-2">
+                        <button type="button" class="btn w-sm btn-light" data-bs-dismiss="modal">{{ __('Close') }}</button>
+                        <button type="button" wire:click="deletePurchase" class="btn w-sm btn-danger">{{ __('Yes, Delete It!') }}</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Hidden Iframe for Printing -->
     <iframe id="printFrame" style="display:none;"></iframe>
 
@@ -1108,6 +1223,16 @@ new class extends Component {
         });
         $wire.on('close-payment-modal', () => {
             let modal = bootstrap.Modal.getInstance(document.getElementById('paymentModal'));
+            if (modal) modal.hide();
+        });
+
+        // Delete Modal
+        $wire.on('open-delete-modal-purchase', () => {
+            let modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('deletePurchaseModal'));
+            modal.show();
+        });
+        $wire.on('close-delete-modal-purchase', () => {
+            let modal = bootstrap.Modal.getInstance(document.getElementById('deletePurchaseModal'));
             if (modal) modal.hide();
         });
 

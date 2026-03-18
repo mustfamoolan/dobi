@@ -1,4 +1,12 @@
 @php
+    // Convert background image to base64 so html2canvas never needs an HTTP request
+    // This is the root fix for blank PDF on first download
+    $bgImagePath = public_path('assets/images/invois.png');
+    $bgImageBase64 = '';
+    if (file_exists($bgImagePath)) {
+        $mime = mime_content_type($bgImagePath) ?: 'image/png';
+        $bgImageBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($bgImagePath));
+    }
     $model = $type == 'sale' ? \App\Models\Sale::with(['customer', 'items.product'])->find($id) : \App\Models\Purchase::with(['supplier', 'items.product'])->find($id);
     $setting = \App\Models\AppSetting::first();
 
@@ -9,10 +17,8 @@
         $previousBalance = $model->customer->getBalanceBeforeSale($model->id, $model->currency);
     }
 
-    @php
-        $idPrefix = $type == 'sale' ? ($model->type == 'invoice' ? 'INV-' : ($model->type == 'quotation' ? 'QUO-' : 'PRO-')) : 'PUR-';
-        $formattedId = $idPrefix . str_pad($model->id, 3, '0', STR_PAD_LEFT);
-    @endphp
+    $idPrefix = $type == 'sale' ? ($model->type == 'invoice' ? 'INV-' : ($model->type == 'quotation' ? 'QUO-' : 'PRO-')) : 'PUR-';
+    $formattedId = $idPrefix . str_pad($model->id, 3, '0', STR_PAD_LEFT);
     // Transform model to JSON for the JS printer
     $invoiceData = [
         'id' => $formattedId,
@@ -28,7 +34,7 @@
             return [
                 'no' => $index + 1,
                 'name' => $item->product->name,
-                'qty' => $item->qty,
+                'qty' => ($item->qty == (int)$item->qty) ? (int)$item->qty : (float)$item->qty,
                 'price' => $item->price ?? $item->cost,
                 'total' => $item->subtotal
             ];
@@ -111,8 +117,8 @@
             overflow: hidden;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 
-            /* Background image for visual alignment */
-            background-image: url('{{ asset("assets/images/invois.png") }}') !important;
+            /* Background image embedded as Base64 — no HTTP request needed */
+            background-image: url('{{ $bgImageBase64 }}') !important;
             background-size: 100% 100%;
             background-repeat: no-repeat;
             background-position: center;
@@ -138,7 +144,7 @@
 
             /* === Download Mode (WITH background image) === */
             body.download-mode .page-container {
-                background-image: url('{{ asset("assets/images/invois.png") }}') !important;
+                background-image: url('{{ $bgImageBase64 }}') !important;
                 background-size: 100% 100% !important;
                 background-repeat: no-repeat !important;
                 -webkit-print-color-adjust: exact;
@@ -532,7 +538,7 @@
                     tr.innerHTML = `
                         <td class="col-no">${item.no}</td>
                         <td class="col-item">${item.name}</td>
-                        <td class="col-qty">${item.qty}</td>
+                        <td class="col-qty">${Number(item.qty) % 1 === 0 ? parseInt(item.qty) : Number(item.qty)}</td>
                         <td class="col-price">${Number(item.price).toLocaleString()} ${currencySymbol}</td>
                         <td class="col-total">${Number(item.total).toLocaleString()} ${currencySymbol}</td>
                     `;
@@ -636,12 +642,16 @@
         });
 
         // === TRUE PDF DOWNLOAD using html2canvas + jsPDF ===
+        // Background is embedded as Base64 in CSS → no HTTP request → always works from first download
         async function downloadAsPDF() {
             const { jsPDF } = window.jspdf;
             const pages = document.querySelectorAll('.page-container');
             const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
             document.body.classList.add('download-mode');
+
+            // Small delay to let browser repaint with download-mode styles
+            await new Promise(resolve => setTimeout(resolve, 150));
 
             for (let i = 0; i < pages.length; i++) {
                 const canvas = await html2canvas(pages[i], {

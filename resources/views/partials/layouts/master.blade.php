@@ -18,6 +18,7 @@
         })();
     </script>
     @include('partials.head-css')
+    @livewireStyles
 </head>
 
 <body>
