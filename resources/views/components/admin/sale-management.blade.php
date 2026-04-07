@@ -52,6 +52,7 @@ new class extends Component {
     public $paymentCurrency = 'USD';
     public $paymentAmount = 0;
     public $paymentAccountId = '';
+    public $payment_notes = '';
 
     // Item Addition Fields
     public $selected_product_id;
@@ -474,7 +475,8 @@ new class extends Component {
         $this->selectedSaleId = $id;
         $this->paymentTotal = $sale->grand_total;
         $this->paymentCurrency = $sale->currency;
-        $this->paymentAmount = $sale->grand_total;
+        $this->paymentAmount = $sale->remainingAmount(); // Use actual remaining amount
+        $this->payment_notes = ''; // Reset notes
         $this->paymentAccountId = \App\Models\FinancialAccount::where('is_active', true)
             ->where('currency', $this->paymentCurrency)
             ->first()?->id ?? '';
@@ -515,11 +517,16 @@ new class extends Component {
             $account->increment('current_balance', $this->paymentAmount);
 
             // 2. Credit Customer (Payment)
+            $paymentDescription = __('Payment for Sale') . ' #' . $sale->id;
+            if ($this->payment_notes) {
+                $paymentDescription .= ' (' . $this->payment_notes . ')';
+            }
+
             CustomerLedger::create([
                 'customer_id' => $sale->customer_id,
                 'date' => now()->format('Y-m-d'),
                 'type' => 'payment',
-                'description' => __('Payment for Sale') . ' #' . $sale->id,
+                'description' => $paymentDescription,
                 'currency' => $sale->currency,
                 'exchange_rate' => $sale->exchange_rate,
                 'debit' => 0,
@@ -778,7 +785,9 @@ new class extends Component {
                             <th>ID</th>
                             <th>{{ __('Date') }}</th>
                             <th>{{ __('Customer') }}</th>
-                            <th>{{ __('Total Amount') }}</th>
+                            <th>{{ __('Total') }}</th>
+                            <th>{{ __('Paid') }}</th>
+                            <th>{{ __('Remaining') }}</th>
                             <th>{{ __('Status') }}</th>
                             <th class="text-end">{{ __('Action') }}</th>
                         </tr>
@@ -797,11 +806,12 @@ new class extends Component {
                                 <td>{{ $sale->customer->name }}</td>
                                 <td>
                                     <strong>{{ number_format($sale->grand_total, $sale->currency === 'USD' ? 2 : 0) }} {{ $sale->currency }}</strong>
-                                    @if($sale->currency !== 'IQD')
-                                        <br><small
-                                            class="text-muted">{{ number_format($sale->grand_total * $sale->exchange_rate, 0) }}
-                                            IQD</small>
-                                    @endif
+                                </td>
+                                <td>
+                                    <span class="text-success fw-bold">{{ number_format($sale->paidAmount(), $sale->currency === 'USD' ? 2 : 0) }}</span>
+                                </td>
+                                <td>
+                                    <span class="text-danger fw-bold">{{ number_format($sale->remainingAmount(), $sale->currency === 'USD' ? 2 : 0) }}</span>
                                 </td>
                                 <td>
                                     <span class="badge {{ $sale->payment_status == 'paid' ? 'bg-success' : 'bg-warning' }}">
@@ -1348,15 +1358,15 @@ new class extends Component {
                                         </div>
                                         <div class="preview-summary-cell">
                                             <span class="preview-summary-label">المبلغ الواصل</span>
-                                            <span class="preview-summary-value">{{ $viewingSale->payment_status === 'paid' ? number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) . ' ' . $currencySymbol : '0' }}</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingSale->paidAmount(), $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-summary-cell">
                                             <span class="preview-summary-label">الرصيد السابق</span>
                                             <span class="preview-summary-value">{{ number_format($viewingPreviousBalance, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-summary-cell">
-                                            <span class="preview-summary-label">الرصيد الكلي</span>
-                                            <span class="preview-summary-value">{{ number_format($viewingPreviousBalance + $viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                            <span class="preview-summary-label">الرصيد المتبقي</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingSale->remainingAmount(), $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-total-in-words">
                                             {{ \App\Services\ArabicAmountToWords::translate($viewingSale->grand_total, $viewingSale->currency) }}
@@ -1487,6 +1497,11 @@ new class extends Component {
                                     <input type="text" class="form-control bg-light {{ $this->remainingAmount > 0 ? 'text-danger fw-bold' : 'text-success fw-bold' }}" value="{{ number_format($this->remainingAmount, $paymentCurrency === 'USD' ? 2 : 0) }}" readonly>
                                     <span class="input-group-text">{{ $paymentCurrency }}</span>
                                 </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold">{{ __('Notes / Remarks') }}</label>
+                                <textarea wire:model="payment_notes" class="form-control" rows="2" placeholder="{{ __('Add any notes for this payment...') }}"></textarea>
                             </div>
                         </div>
                     </div>

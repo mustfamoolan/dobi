@@ -56,6 +56,19 @@ class Sale extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function paidAmount()
+    {
+        return CustomerLedger::where('ref_type', 'sale')
+            ->where('ref_id', $this->id)
+            ->where('type', 'payment')
+            ->sum('credit');
+    }
+
+    public function remainingAmount()
+    {
+        return max(0, $this->grand_total - $this->paidAmount());
+    }
+
     public function updater()
     {
         return $this->belongsTo(User::class, 'updated_by');

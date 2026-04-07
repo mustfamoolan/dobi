@@ -44,10 +44,10 @@
             'discount' => $model->discount ?? 0,
             'extra' => $model->tax ?? 0,
             'net' => $model->grand_total,
-            'paid' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? $model->grand_total : 0,
+            'paid' => $type === 'sale' ? $model->paidAmount() : (($model->payment_status === 'paid') ? $model->grand_total : 0),
             'previous' => $previousBalance,
             'total_balance' => $previousBalance + $model->grand_total,
-            'remaining' => ($model->payment_status === 'paid' && ($type !== 'sale' || ($model->type ?? 'invoice') === 'invoice')) ? 0 : $model->grand_total,
+            'remaining' => $type === 'sale' ? $model->remainingAmount() : (($model->payment_status === 'paid') ? 0 : $model->grand_total),
             'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total, $model->currency),
             'notes' => $model->notes
         ]

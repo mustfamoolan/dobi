@@ -27,14 +27,14 @@
         <!-- Sidebar Toggle for Mobile -->
         <button class="btn btn-light-light icon-btn d-md-none small-screen-toggle" id="smallScreenSidebarLabel"
           type="button" data-bs-toggle="offcanvas" data-bs-target="#smallScreenSidebar"
-          aria-controls="smallScreenSidebar">
+          aria-controls="smallScreenSidebar" onclick="if(window.history.length > 1) { window.history.back(); }">
           <span class="visually-hidden">Sidebar toggle for mobile</span>
           <i class="ri-arrow-right-fill"></i>
         </button>
 
         <!-- Sidebar Toggle for Horizontal Menu -->
         <button class="btn btn-light-light icon-btn d-lg-none small-screen-horizontal-toggle" type="button"
-          aria-expanded="false" aria-controls="main-menu">
+          aria-expanded="false" aria-controls="main-menu" onclick="window.history.back()">
           <span class="visually-hidden">Sidebar toggle for horizontal</span>
           <i class="ri-arrow-right-fill"></i>
         </button>

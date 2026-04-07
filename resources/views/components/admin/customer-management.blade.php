@@ -192,20 +192,32 @@ new class extends Component {
                                 <td>{{ $customer->phone }}</td>
                                 <td>
                                     <div class="d-flex flex-column">
-                                        <span class="badge bg-primary-subtle text-primary mb-1">{{ number_format($customer->balance_iqd ?? 0, 0) }} IQD</span>
-                                        <small class="text-muted" style="font-size: 0.75rem;">
-                                            <span class="text-danger">{{ __('D') }}: {{ number_format($customer->total_debit_iqd ?? 0, 0) }}</span> | 
-                                            <span class="text-success">{{ __('C') }}: {{ number_format($customer->total_credit_iqd ?? 0, 0) }}</span>
-                                        </small>
+                                        <div class="mb-1">
+                                            <span class="badge bg-danger-subtle text-danger px-2" title="{{ __('Total Debt') }}">
+                                                <small>{{ __('عليه') }}:</small> {{ number_format($customer->total_debit_iqd ?? 0, 0) }}
+                                            </span>
+                                            <span class="badge bg-success-subtle text-success px-2" title="{{ __('Total Paid') }}">
+                                                <small>{{ __('مدفوع') }}:</small> {{ number_format($customer->total_credit_iqd ?? 0, 0) }}
+                                            </span>
+                                        </div>
+                                        <span class="fw-bold fs-13 {{ ($customer->balance_iqd ?? 0) > 0 ? 'text-danger' : 'text-success' }}">
+                                            <small>{{ __('المتبقي') }}:</small> {{ number_format($customer->balance_iqd ?? 0, 0) }} IQD
+                                        </span>
                                     </div>
                                 </td>
                                 <td>
                                     <div class="d-flex flex-column">
-                                        <span class="badge bg-success-subtle text-success mb-1">{{ number_format($customer->balance_usd ?? 0, 2) }} USD</span>
-                                        <small class="text-muted" style="font-size: 0.75rem;">
-                                            <span class="text-danger">{{ __('D') }}: {{ number_format($customer->total_debit_usd ?? 0, 2) }}</span> | 
-                                            <span class="text-success">{{ __('C') }}: {{ number_format($customer->total_credit_usd ?? 0, 2) }}</span>
-                                        </small>
+                                        <div class="mb-1">
+                                            <span class="badge bg-danger-subtle text-danger px-2" title="{{ __('Total Debt') }}">
+                                                <small>{{ __('عليه') }}:</small> {{ number_format($customer->total_debit_usd ?? 0, 2) }}
+                                            </span>
+                                            <span class="badge bg-success-subtle text-success px-2" title="{{ __('Total Paid') }}">
+                                                <small>{{ __('مدفوع') }}:</small> {{ number_format($customer->total_credit_usd ?? 0, 2) }}
+                                            </span>
+                                        </div>
+                                        <span class="fw-bold fs-13 {{ ($customer->balance_usd ?? 0) > 0 ? 'text-danger' : 'text-success' }}">
+                                            <small>{{ __('المتبقي') }}:</small> {{ number_format($customer->balance_usd ?? 0, 2) }} USD
+                                        </span>
                                     </div>
                                 </td>
                                 <td>{{ $customer->created_at->format('Y-m-d') }}</td>
