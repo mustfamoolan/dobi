@@ -93,7 +93,7 @@ new class extends Component {
                         <select wire:model="productId" class="form-select @error('productId') is-invalid @enderror">
                             <option value="">-- {{ __('Select Product') }} --</option>
                             @foreach($products as $product)
-                                <option value="{{ $product->id }}">{{ $product->name }} ({{ $product->sku }})</option>
+                                <option value="{{ $product->id }}">{{ $product->name }}</option>
                             @endforeach
                         </select>
                         @error('productId') <div class="invalid-feedback">{{ $message }}</div> @enderror

@@ -79,7 +79,6 @@
                                 <tr>
                                     <th class="px-5"></th>
                                     <th>Product</th>
-                                    <th>SKU</th>
                                     <th>Price</th>
                                     <th>Category</th>
                                     <th>Tags</th>
@@ -101,7 +100,6 @@
                                 <tr>
                                     <th class="px-5"></th>
                                     <th>Product</th>
-                                    <th>SKU</th>
                                     <th>Price</th>
                                     <th>Category</th>
                                     <th>Tags</th>
@@ -123,7 +121,6 @@
                                 <tr>
                                     <th class="px-5"></th>
                                     <th>Product</th>
-                                    <th>SKU</th>
                                     <th>Price</th>
                                     <th>Category</th>
                                     <th>Tags</th>

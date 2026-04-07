@@ -19,15 +19,14 @@ new class extends Component {
 
         $query = $this->query;
 
-        $products = Product::where('name', 'like', "%{$query}%")
-            ->orWhere('sku', 'like', "%{$query}%")
+        $products = Product::with('category')->where('name', 'like', "%{$query}%")
             ->take(5)
             ->get()
             ->map(fn($p) => [
                 'type' => __('Product'),
                 'title' => $p->name,
-                'sub' => $p->sku,
-                'url' => route('admin.products.index', ['search' => $p->sku]),
+                'sub' => $p->category->name ?? '',
+                'url' => route('admin.products.index', ['search' => $p->name]),
                 'icon' => 'bi-box-seam'
             ]);
 

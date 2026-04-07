@@ -123,6 +123,8 @@ new class extends Component {
                                 <td>{{ $category->creator->name ?? __('System') }}</td>
                                 <td>{{ $category->created_at->format('Y-m-d') }}</td>
                                 <td class="text-end">
+                                    <a href="{{ route('admin.categories.show', $category->id) }}" class="btn btn-sm btn-soft-primary" title="{{ __('View') }}"><i
+                                            class="ri-eye-line"></i></a>
                                     <button wire:click="edit({{ $category->id }})" class="btn btn-sm btn-soft-info" title="{{ __('Edit') }}"><i
                                             class="ri-edit-line"></i></button>
                                     <button wire:click="delete({{ $category->id }})"

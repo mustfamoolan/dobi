@@ -35,6 +35,9 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::get('/categories', function () {
         return view('admin.categories');
     })->name('categories.index');
+    Route::get('/categories/{id}', function ($id) {
+        return view('admin.category-show', ['id' => $id]);
+    })->name('categories.show');
     Route::get('/products', function () {
         return view('admin.products');
     })->name('products.index');

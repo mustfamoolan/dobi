@@ -655,8 +655,7 @@ new class extends Component {
                                         <select wire:model.live="selected_product_id" class="form-select">
                                             <option value="">{{ __('Choose Product...') }}</option>
                                             @foreach($products as $product)
-                                                <option value="{{ $product->id }}">{{ $product->name }} (SKU:
-                                                    {{ $product->sku }})
+                                                <option value="{{ $product->id }}">{{ $product->name }}
                                                 </option>
                                             @endforeach
                                         </select>

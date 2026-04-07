@@ -100,8 +100,7 @@ new class extends Component {
                     $q->where('category_id', $this->filter_category_id);
                 })
                 ->where(function ($q) {
-                    $q->where('name', 'like', '%' . $this->productSearch . '%')
-                        ->orWhere('sku', 'like', '%' . $this->productSearch . '%');
+                    $q->where('name', 'like', '%' . $this->productSearch . '%');
                 })
                 ->where('is_active', true)
                 ->get(),
@@ -154,7 +153,6 @@ new class extends Component {
                     <thead class="table-light">
                         <tr>
                             <th>{{ __('Product') }}</th>
-                            <th>{{ __('SKU') }}</th>
                             <th>{{ __('Current Stock') }}</th>
                             <th class="text-end">{{ __('Action') }}</th>
                         </tr>
@@ -164,7 +162,6 @@ new class extends Component {
                             @php $stock = $product->stockInWarehouse($warehouse->id); @endphp
                             <tr>
                                 <td>{{ $product->name }}</td>
-                                <td>{{ $product->sku }}</td>
                                 <td>
                                     <span class="badge {{ $stock > $product->stock_alert ? 'bg-success' : 'bg-danger' }}">
                                         {{ number_format($stock, 0) }} {{ $product->unit }}

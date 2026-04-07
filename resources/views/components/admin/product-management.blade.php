@@ -14,7 +14,7 @@ new class extends Component {
     #[Url]
     public $search = '';
     public $productId;
-    public $name, $sku, $category_id, $currency = 'IQD', $cost = 0, $price = 0, $unit = 'Pcs', $stock_alert = 0, $is_active = true;
+    public $name, $category_id, $currency = 'IQD', $cost = 0, $price = 0, $unit = 'Pcs', $stock_alert = 0, $is_active = true;
     public $opening_stock = 0, $warehouse_id; // Only used during creation
     public $isEditMode = false;
 
@@ -92,7 +92,7 @@ new class extends Component {
 
     public function openModal()
     {
-        $this->reset(['name', 'sku', 'category_id', 'currency', 'cost', 'price', 'unit', 'stock_alert', 'is_active', 'opening_stock', 'productId', 'isEditMode']);
+        $this->reset(['name', 'category_id', 'currency', 'cost', 'price', 'unit', 'stock_alert', 'is_active', 'opening_stock', 'productId', 'isEditMode']);
         $this->currency = 'IQD'; // Default currency
         $this->dispatch('open-product-modal');
     }
@@ -102,7 +102,6 @@ new class extends Component {
         $product = Product::findOrFail($id);
         $this->productId = $product->id;
         $this->name = $product->name;
-        $this->sku = $product->sku;
         $this->category_id = $product->category_id;
         $this->currency = $product->currency ?? 'IQD';
         $this->cost = $product->cost;
@@ -118,7 +117,6 @@ new class extends Component {
     {
         $this->validate([
             'name' => 'required|string|max:255',
-            'sku' => 'nullable|string|max:100|unique:products,sku,' . $this->productId,
             'category_id' => 'required|exists:categories,id',
             'currency' => 'required|in:USD,IQD',
             'cost' => 'required|numeric|min:0',
@@ -130,7 +128,6 @@ new class extends Component {
 
         $data = [
             'name' => $this->name,
-            'sku' => $this->sku,
             'category_id' => $this->category_id,
             'currency' => $this->currency,
             'cost' => $this->cost,
@@ -190,8 +187,7 @@ new class extends Component {
                 });
             })
             ->where(function ($q) {
-                $q->where('name', 'like', '%' . $this->search . '%')
-                    ->orWhere('sku', 'like', '%' . $this->search . '%');
+                $q->where('name', 'like', '%' . $this->search . '%');
             })
             ->latest()
             ->paginate(10);
@@ -258,7 +254,6 @@ new class extends Component {
                                     <div class="d-flex align-items-center">
                                         <div class="flex-grow-1">
                                             <h6 class="fs-14 mb-0">{{ $product->name }}</h6>
-                                            <small class="text-muted">{{ $product->sku ?? __('No SKU') }}</small>
                                         </div>
                                     </div>
                                 </td>
@@ -331,12 +326,7 @@ new class extends Component {
                                     class="form-control @error('name') is-invalid @enderror">
                                 @error('name') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">{{ __('SKU / Barcode') }}</label>
-                                <input type="text" wire:model="sku"
-                                    class="form-control @error('sku') is-invalid @enderror">
-                                @error('sku') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                            </div>
+
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">{{ __('Category') }}</label>
                                 <select wire:model="category_id"

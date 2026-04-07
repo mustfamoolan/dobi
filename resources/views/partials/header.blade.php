@@ -129,7 +129,7 @@
               aria-expanded="false" data-bs-auto-close="outside" data-bs-dropdown-animation>
               <span class="position-relative">
                 <span class="avatar-item avatar overflow-hidden">
-                  <img class="img-fluid" src="{{ asset('assets/images/avatar/avatar-1.jpg') }}" alt="avatar image">
+                  <img class="img-fluid" src="{{ asset('assets/images/DOKKAN.png') }}" alt="avatar image">
                 </span>
                 <span
                   class="position-absolute border-2 border border-white h-12px w-12px rounded-circle bg-success end-0 bottom-0"></span>
