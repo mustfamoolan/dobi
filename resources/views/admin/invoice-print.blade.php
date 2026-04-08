@@ -659,7 +659,9 @@
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
-                    backgroundColor: '#ffffff'
+                    backgroundColor: '#ffffff',
+                    scrollX: 0,
+                    scrollY: 0
                 });
                 const imgData = canvas.toDataURL('image/jpeg', 1.0);
                 if (i > 0) pdf.addPage();

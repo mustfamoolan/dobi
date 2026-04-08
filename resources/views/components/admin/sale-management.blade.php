@@ -1415,7 +1415,7 @@ new class extends Component {
     </div>
 
     <!-- Hidden Iframe for Printing -->
-    <iframe id="printFrame" style="display:none;"></iframe>
+    <iframe id="printFrame" style="position: absolute; width: 210mm; height: 297mm; border: none; top: -9999px; left: -9999px; visibility: hidden;"></iframe>
 
     <!-- Print/Download Modal (auto-opens after saving a new invoice) -->
     <div class="modal fade" id="printDownloadModal" tabindex="-1" aria-labelledby="printDownloadModalLabel" aria-hidden="true">
