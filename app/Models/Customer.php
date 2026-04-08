@@ -31,6 +31,14 @@ class Customer extends Model
         return $this->hasMany(CustomerLedger::class);
     }
 
+    public function getCurrentBalance($currency = 'IQD')
+    {
+        return CustomerLedger::where('customer_id', $this->id)
+            ->where('currency', $currency)
+            ->selectRaw('SUM(debit) - SUM(credit) as balance')
+            ->first()->balance ?? 0;
+    }
+
     public function getBalanceBeforeSale($saleId, $currency = 'IQD')
     {
         $saleEntry = CustomerLedger::where('customer_id', $this->id)

@@ -117,8 +117,9 @@ new class extends Component {
                         </select>
                         <input type="date" wire:model.live="fromDate" class="form-control form-control-sm">
                         <input type="date" wire:model.live="toDate" class="form-control form-control-sm">
-                        <button onclick="window.print()" class="btn btn-soft-secondary btn-sm"><i
-                                class="ri-printer-line"></i> {{ __('Print') }}</button>
+                        <button onclick="openPrintModal()" class="btn btn-primary btn-sm">
+                            <i class="ri-printer-line me-1"></i> {{ __('Print Statement') }}
+                        </button>
                     </div>
                 </div>
                 <div class="card-body">
@@ -135,7 +136,7 @@ new class extends Component {
                             </thead>
                             <tbody>
                                 <tr class="table-info">
-                                    <td colspan="2"><strong>{{ __('Balance Forward (Before') }}
+                                    <td colspan="2"><strong>{{ __('رصيد سابق (ما قبل') }}
                                             {{ $fromDate }})</strong></td>
                                     <td class="text-end">-</td>
                                     <td class="text-end">-</td>
@@ -198,4 +199,57 @@ new class extends Component {
             </div>
         </div>
     </div>
+
+    <!-- Hidden Iframe for Printing/Downloading -->
+    <iframe id="reportFrame" style="position: absolute; width: 210mm; height: 297mm; border: none; top: -9999px; left: -9999px; visibility: hidden;"></iframe>
+
+    <!-- Print/Download Modal -->
+    <div class="modal fade" id="reportPrintModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-radius: 12px; overflow: hidden;">
+                <div class="modal-header" style="background: #32267d; color: white; border: none;">
+                    <h5 class="modal-title">🖨️ طباعة كشف الحساب</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center" style="padding: 30px;">
+                    <p style="font-size: 13pt; margin-bottom: 25px; color: #444;">
+                        كشف حساب للعميل: <strong>{{ $customer->name }}</strong>
+                    </p>
+                    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                        <button onclick="triggerReportAction('print')" 
+                           style="background: #32267d; color: white; border:none; padding: 12px 25px; border-radius: 8px; font-weight: bold; font-size: 11pt; cursor: pointer;">
+                            🖨️ طباعة فورية
+                        </button>
+                        <button onclick="triggerReportAction('download')"
+                           style="background: #1a7d4e; color: white; border:none; padding: 12px 25px; border-radius: 8px; font-weight: bold; font-size: 11pt; cursor: pointer;">
+                            ⬇️ تحميل PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openPrintModal() {
+            var modal = new bootstrap.Modal(document.getElementById('reportPrintModal'));
+            modal.show();
+        }
+
+        function triggerReportAction(action) {
+            // Get current filters from Livewire component
+            const fromDate = @this.get('fromDate');
+            const toDate = @this.get('toDate');
+            const currency = @this.get('currency');
+            const customerId = {{ $customer->id }};
+
+            const baseUrl = `/admin/customers/${customerId}/report/print`;
+            const queryParams = `?from_date=${fromDate}&to_date=${toDate}&currency=${currency}&auto${action}=1`;
+            
+            const frame = document.getElementById('reportFrame');
+            frame.src = baseUrl + queryParams;
+
+            bootstrap.Modal.getInstance(document.getElementById('reportPrintModal')).hide();
+        }
+    </script>
 </div>

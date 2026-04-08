@@ -60,7 +60,35 @@ new class extends Component {
         ];
 
         if ($this->isEditMode) {
-            Customer::findOrFail($this->customerId)->update($data);
+            $customer = Customer::findOrFail($this->customerId);
+            $customer->update($data);
+            
+            // Sync Opening Balance in Ledger (IQD)
+            \App\Models\CustomerLedger::updateOrCreate(
+                ['customer_id' => $customer->id, 'type' => 'opening_balance', 'currency' => 'IQD'],
+                [
+                    'date' => $customer->created_at, // Keep original date
+                    'description' => __('Opening Balance') . ' (IQD)',
+                    'debit' => $this->opening_balance_iqd > 0 ? $this->opening_balance_iqd : 0,
+                    'credit' => $this->opening_balance_iqd < 0 ? abs($this->opening_balance_iqd) : 0,
+                    'balance' => $this->opening_balance_iqd,
+                    'created_by' => Auth::id(),
+                ]
+            );
+
+            // Sync Opening Balance in Ledger (USD)
+            \App\Models\CustomerLedger::updateOrCreate(
+                ['customer_id' => $customer->id, 'type' => 'opening_balance', 'currency' => 'USD'],
+                [
+                    'date' => $customer->created_at, // Keep original date
+                    'description' => __('Opening Balance') . ' (USD)',
+                    'debit' => $this->opening_balance_usd > 0 ? $this->opening_balance_usd : 0,
+                    'credit' => $this->opening_balance_usd < 0 ? abs($this->opening_balance_usd) : 0,
+                    'balance' => $this->opening_balance_usd,
+                    'created_by' => Auth::id(),
+                ]
+            );
+
             session()->flash('success', __('Customer updated successfully.'));
         } else {
             $data['created_by'] = Auth::id();

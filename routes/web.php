@@ -111,6 +111,10 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     });
 
     // Phase 10: Printable Views
+    Route::get('/customers/{id}/report/print', function ($id) {
+        return view('admin.customer-report-print', ['id' => $id]);
+    })->name('customers.report.print');
+
     Route::get('/sales/{id}/print', function ($id) {
         return view('admin.invoice-print', ['id' => $id, 'type' => 'sale']);
     })->name('sales.print');
