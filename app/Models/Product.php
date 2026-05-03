@@ -69,4 +69,19 @@ class Product extends Model
             }
         }
     }
+    public function getWarehousesListAttribute()
+    {
+        $warehouseIds = StockMovement::query()
+            ->select('warehouse_id')
+            ->where('product_id', $this->id)
+            ->groupBy('warehouse_id')
+            ->havingRaw('SUM(qty_in) - SUM(qty_out) > 0')
+            ->pluck('warehouse_id');
+
+        if ($warehouseIds->isEmpty()) {
+            return __('No Stock');
+        }
+
+        return Warehouse::whereIn('id', $warehouseIds)->pluck('name')->implode(', ');
+    }
 }

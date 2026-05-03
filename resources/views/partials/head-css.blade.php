@@ -31,3 +31,45 @@
     <link rel="stylesheet" href="{{ asset('assets/css/app.min.css') }}" id="app-style">
     <link rel="stylesheet" href="{{ asset('assets/css/custom.min.css') }}" id="custom-style">
 @endif
+
+<style>
+    /* DOKKAN Minimalist Cleanup - Updated for Functional Navigation */
+    
+    /* Clean up the breadcrumb item container */
+    .breadcrumb-item.active.d-flex {
+        display: inline-block !important;
+        gap: 0 !important;
+    }
+
+    /* Standardize breadcrumb separators to a clear arrow */
+    .breadcrumb-item + .breadcrumb-item::before {
+        content: "\f105" !important; /* Remix Icon ri-arrow-right-s-line */
+        font-family: 'remixicon' !important;
+        color: #adb5bd !important;
+        font-size: 14px !important;
+        vertical-align: middle;
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    /* Modern Back Button Aesthetic */
+    .back-btn-modern {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        opacity: 0.6;
+        text-decoration: none !important;
+    }
+
+    .back-btn-modern:hover {
+        opacity: 1;
+        transform: translateX(3px); /* Subtle move in RTL (points right) */
+        color: var(--vz-primary) !important;
+    }
+
+    .back-btn-modern i {
+        line-height: 1;
+    }
+</style>
+

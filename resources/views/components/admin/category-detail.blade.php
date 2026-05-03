@@ -65,9 +65,6 @@ new class extends Component {
                         <div class="d-flex flex-wrap gap-2">
                              <input type="search" wire:model.live="search" class="form-control form-control-sm"
                                 placeholder="{{ __('Search Products...') }}">
-                             <a href="{{ route('admin.categories.index') }}" class="btn btn-soft-secondary btn-sm">
-                                <i class="ri-arrow-left-line align-bottom me-1"></i> {{ __('Back to List') }}
-                            </a>
                         </div>
                     </div>
                 </div>
@@ -77,6 +74,7 @@ new class extends Component {
                             <thead class="table-light">
                                 <tr>
                                     <th>{{ __('Product Name') }}</th>
+                                    <th>{{ __('Warehouse') }}</th>
                                     <th>{{ __('Unit') }}</th>
                                     <th>{{ __('Cost') }}</th>
                                     <th>{{ __('Price') }}</th>
@@ -89,6 +87,9 @@ new class extends Component {
                                 @forelse($products as $product)
                                     <tr>
                                         <td>{{ $product->name }}</td>
+                                        <td>
+                                            <span class="text-muted">{{ $product->warehouses_list }}</span>
+                                        </td>
                                         <td>{{ $product->unit }}</td>
                                         <td>{{ number_format($product->cost, 2) }} {{ $product->currency }}</td>
                                         <td>{{ number_format($product->price, 2) }} {{ $product->currency }}</td>

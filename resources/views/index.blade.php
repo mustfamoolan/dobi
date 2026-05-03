@@ -70,41 +70,20 @@
                 </div>
             </div>
 
-            {{-- Total Customers Card --}}
+            {{-- Treasury Balance USD Card --}}
             <div class="col-lg-3">
                 <div class="card card-h-100 overflow-hidden">
                     <div class="card-body p-4">
                         <div class="hstack flex-wrap justify-content-between gap-3 align-items-end">
                             <div class="flex-grow-1">
                                 <div class="hstack gap-3 mb-3">
-                                    <div class="bg-primary-subtle text-primary avatar avatar-item rounded-2">
-                                        <i class="ri-user-heart-line fs-16 fw-medium"></i>
+                                    <div class="bg-success-subtle text-success avatar avatar-item rounded-2">
+                                        <i class="ri-money-dollar-circle-line fs-16 fw-medium"></i>
                                     </div>
-                                    <h6 class="mb-0 fs-13">{{ __('Total Customers') }}</h6>
+                                    <h6 class="mb-0 fs-13">رصيد الصناديق (دولار)</h6>
                                 </div>
                                 <h4 class="fw-semibold fs-5 mb-0">
-                                    <span>{{ $customers_count }}</span>
-                                </h4>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {{-- Total Products Card --}}
-            <div class="col-lg-3">
-                <div class="card card-h-100 overflow-hidden">
-                    <div class="card-body p-4">
-                        <div class="hstack flex-wrap justify-content-between gap-3 align-items-end">
-                            <div class="flex-grow-1">
-                                <div class="hstack gap-3 mb-3">
-                                    <div class="bg-info-subtle text-info avatar avatar-item rounded-2">
-                                        <i class="ri-shopping-bag-3-line fs-16 fw-medium"></i>
-                                    </div>
-                                    <h6 class="mb-0 fs-13">{{ __('Registered Products') }}</h6>
-                                </div>
-                                <h4 class="fw-semibold fs-5 mb-0">
-                                    <span>{{ $products_count }}</span>
+                                    <span>{{ number_format($treasury_total_usd, 2) }}</span>
                                 </h4>
                             </div>
                         </div>

@@ -22,6 +22,7 @@
     // Transform model to JSON for the JS printer
     $invoiceData = [
         'id' => $formattedId,
+        'type_raw' => $model->type ?? 'invoice',
         'type_label' => $typeLabel,
         'date' => $model->date,
         'customer' => [
@@ -46,7 +47,7 @@
             'net' => $model->grand_total,
             'paid' => $type === 'sale' ? $model->paidAmount() : (($model->payment_status === 'paid') ? $model->grand_total : 0),
             'previous' => $previousBalance,
-            'total_balance' => $previousBalance + $model->grand_total,
+            'total_balance' => $previousBalance + ($type === 'sale' ? $model->remainingAmount() : (($model->payment_status === 'paid') ? 0 : $model->grand_total)),
             'remaining' => $type === 'sale' ? $model->remainingAmount() : (($model->payment_status === 'paid') ? 0 : $model->grand_total),
             'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total, $model->currency),
             'notes' => $model->notes
@@ -163,53 +164,62 @@
             flex-direction: column;
         }
 
-        /* Top Info Grid */
         .info-grid {
             display: grid;
-            grid-template-columns: 1.2fr 1fr 1fr; /* 3 columns */
-            grid-template-rows: auto auto;      /* 2 rows */
-            gap: 2mm 3mm;
-            margin-bottom: 3mm;
-            font-weight: bold;
-            font-size: var(--font-size-header);
+            grid-template-columns: 1fr 1fr 1.5fr; /* No, Date, Customer (in RTL) */
+            gap: 2mm;
+            margin-bottom: 2mm;
             color: #32267d;
             border: 1px solid #b0a8d8;
             background: #f3f1fb;
-            padding: 2.5mm;
-            border-radius: 1mm;
-            align-items: center;
+            padding: 1.5mm 3mm;
+            border-radius: 1.5mm;
+            align-items: stretch; 
+            direction: rtl; 
+        }
+
+        .type-header-inline {
+            font-size: 9pt;
+            font-weight: bold;
+            color: #32267d;
+            border-bottom: 1px solid #32267d;
+            margin-bottom: 1.5mm;
+            padding-bottom: 0.5mm;
+            display: inline-block;
+            white-space: nowrap;
         }
 
         .info-item {
             display: flex;
-            gap: 1.5mm;
+            flex-direction: column;
+            gap: 0.5mm;
+            text-align: left;
+            justify-content: flex-end; /* Align contents to bottom */
+            height: 100%;
+        }
+
+        .info-item.center-cell {
+            text-align: center;
             align-items: center;
         }
 
-        .info-item.id-cell {
-            font-size: 16pt;
-            font-weight: 400;
-            color: #32267d;
-        }
-
-        .info-item.type-cell {
-            justify-content: center;
-            font-weight: bold;
-            font-size: 11pt;
+        .info-item.customer-cell {
+            text-align: right; 
+            align-items: flex-end;
+            direction: rtl;
         }
 
         .info-item label {
-            white-space: nowrap;
             color: #7a6fb0;
-            /* lighter shade of #32267d */
-            font-size: 8pt;
+            font-size: 7.5pt;
+            font-weight: bold;
+            text-transform: uppercase;
         }
 
         .info-item span {
             color: #32267d;
-            font-weight: 900;
-            unicode-bidi: plaintext;
-            text-align: right;
+            font-weight: 800;
+            font-size: 9.5pt;
         }
 
         /* Table Styling */
@@ -315,15 +325,12 @@
 
         /* Summary Grid (Horizontal) — بلوك الأرصدة */
         .summary-grid {
-            /* ↓ المسافة بين نهاية الجدول وبداية بلوك الأرصدة
-               GAP BETWEEN TABLE AND SUMMARY: عدّل هذا الرقم */
             margin-top: 5mm;
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr 1fr;
             border: 1px solid #32267d;
-
-            /* ↓ حجم خط بلوك الأرصدة — summary font size */
             font-size: 8.5pt;
+            direction: rtl;
         }
 
         .summary-cell {
@@ -333,26 +340,56 @@
             display: flex;
             flex-direction: column;
             gap: 1mm;
+            justify-content: center;
+            align-items: center;
         }
 
         .summary-cell:last-child {
             border-left: none;
         }
 
-        .summary-label {
-            font-weight: bold;
+        .summary-cell.highlight-cell {
+            background: #e3e8f8;
+        }
+
+        .summary-cell.highlight-cell .summary-value {
+            font-size: 11pt;
+        }
+
+        .summary-label-row {
+            display: flex;
+            align-items: center;
+            gap: 1.5mm;
             color: #32267d;
             border-bottom: 0.5px solid #b0a8d8;
             padding-bottom: 1mm;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .summary-label-row svg {
+            width: 3.5mm;
+            height: 3.5mm;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .summary-label {
+            font-weight: bold;
+            color: #32267d;
         }
 
         .summary-value {
             font-weight: 800;
             color: #32267d;
+            font-size: 9.5pt;
         }
 
         .total-in-words {
-            grid-column: span 5;
+            grid-column: span 6; /* updated for 6 columns */
             padding: 2mm;
             text-align: center;
             font-weight: bold;
@@ -445,17 +482,23 @@
     <template id="page-template">
         <div class="page-container">
             <div class="table-container-pre">
-                <!-- Info Grid (Two rows - 3 columns) -->
-                <div class="info-grid">
-                    <!-- Row 1 (Right to Left) -->
-                    <div class="info-item" style="justify-content: flex-start;"><label>الاسم:</label> <span class="data-customer"></span></div>
-                    <div class="info-item" style="justify-content: center;"><label>العنوان:</label> <span class="data-address"></span></div>
-                    <div class="info-item id-cell" style="justify-content: flex-end;"><span class="data-no"></span></div>
-                    
-                    <!-- Row 2 (Right to Left) -->
-                    <div class="info-item" style="justify-content: flex-start;"><label>الهاتف:</label> <span class="data-phone"></span></div>
-                    <div class="info-item type-cell"><span class="data-type"></span></div>
-                    <div class="info-item" style="justify-content: flex-end;"><label>التاريخ:</label> <span class="data-date"></span></div>
+                <!-- Info Grid (Single row - 3 columns) -->
+                <div class="info-grid" style="direction: ltr !important; display: flex !important; justify-content: space-between !important; gap: 2mm !important;">
+                    <div class="info-item">
+                        <div class="type-header-inline">
+                            <span class="data-type-label"></span> | <span class="data-type-ar"></span>
+                        </div>
+                        <label>Invoice No:</label>
+                        <span class="data-no"></span>
+                    </div>
+                    <div class="info-item center-cell">
+                        <label>Date:</label>
+                        <span class="data-date"></span>
+                    </div>
+                    <div class="info-item customer-cell">
+                        <label>Customer:</label>
+                        <span class="data-customer"></span>
+                    </div>
                 </div>
 
                 <table class="invoice-table">
@@ -481,25 +524,46 @@
                 </div>
 
                 <div class="summary-grid">
+                    <div class="summary-cell highlight-cell">
+                        <div class="summary-label-row">
+                            <span class="summary-label">المبلغ الإجمالي</span>
+                        </div>
+                        <span class="summary-value data-net">0</span>
+                    </div>
                     <div class="summary-cell">
-                        <span class="summary-label">المجموع</span>
+                        <div class="summary-label-row">
+                            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 7h6v2H9V7zm0 4h2v2H9v-2zm4 0h2v2h-2v-2zm-4 4h2v2H9v-2zm4 0h2v2h-2v-2z"></path></svg>
+                            <span class="summary-label">المجموع</span>
+                        </div>
                         <span class="summary-value data-subtotal">0</span>
                     </div>
                     <div class="summary-cell">
-                        <span class="summary-label">الخصم</span>
+                        <div class="summary-label-row">
+                            <svg viewBox="0 0 24 24"><circle cx="9" cy="15" r="2.5"></circle><circle cx="15" cy="9" r="2.5"></circle><path d="M18.8 6.6l-1.4-1.4-10.8 10.8 1.4 1.4L18.8 6.6z"></path><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg>
+                            <span class="summary-label">الخصم</span>
+                        </div>
                         <span class="summary-value data-discount">0</span>
                     </div>
                     <div class="summary-cell">
-                        <span class="summary-label">المبلغ الواصل</span>
+                        <div class="summary-label-row">
+                            <svg viewBox="0 0 24 24"><path d="M2 17h2v.5H3v1h1v.5H2v1h3v-4H2v1zm1-9h1V4H2v1h1v3zm-1 3h1.8L2 13.1v.9h3v-1H3.2L5 10.9V10H2v1zm5-6v2h14V5H7zm0 14h14v-2H7v2zm0-6h14v-2H7v2z"></path></svg>
+                            <span class="summary-label">المبلغ الواصل</span>
+                        </div>
                         <span class="summary-value data-paid">0</span>
                     </div>
                     <div class="summary-cell">
-                        <span class="summary-label">الرصيد السابق</span>
-                        <span class="summary-value data-previous">---</span>
+                        <div class="summary-label-row">
+                            <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"></path></svg>
+                            <span class="summary-label">الرصيد الحالي</span>
+                        </div>
+                        <span class="summary-value data-total-balance">0</span>
                     </div>
                     <div class="summary-cell">
-                        <span class="summary-label">الرصيد الكلي</span>
-                        <span class="summary-value data-total-balance">0</span>
+                        <div class="summary-label-row">
+                            <svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"></path></svg>
+                            <span class="summary-label">الرصيد السابق</span>
+                        </div>
+                        <span class="summary-value data-previous">---</span>
                     </div>
                     <div class="total-in-words data-words"></div>
                 </div>
@@ -525,9 +589,16 @@
                 page.querySelector('.data-no').textContent = data.id;
                 page.querySelector('.data-date').textContent = data.date;
                 page.querySelector('.data-customer').textContent = data.customer.name;
-                page.querySelector('.data-type').textContent = data.type_label;
-                page.querySelector('.data-phone').textContent = data.customer.phone;
-                page.querySelector('.data-address').textContent = data.customer.address;
+                
+                // Dynamic Type Labels
+                const typeLabels = {
+                    'invoice': { en: 'INVOICE', ar: 'فاتورة' },
+                    'quotation': { en: 'QUOTATION', ar: 'عرض سعر' },
+                    'proforma': { en: 'PROFORMA', ar: 'فاتورة أولية' }
+                };
+                const currentType = data.type_raw || 'invoice';
+                page.querySelector('.data-type-label').textContent = typeLabels[currentType]?.en || 'INVOICE';
+                page.querySelector('.data-type-ar').textContent = typeLabels[currentType]?.ar || 'فاتورة';
 
                 // Fill Items
                 const tbody = page.querySelector('.data-items');
@@ -562,6 +633,7 @@
                 // Fill Footer (only on last page)
                 if (i === totalPages - 1) {
                     page.querySelector('.data-words').textContent = data.totals.words;
+                    page.querySelector('.data-net').textContent = Number(data.totals.net).toLocaleString() + ' ' + currencySymbol;
                     page.querySelector('.data-subtotal').textContent = Number(data.totals.subtotal).toLocaleString() + ' ' + currencySymbol;
                     page.querySelector('.data-discount').textContent = Number(data.totals.discount).toLocaleString() + ' ' + currencySymbol;
                     page.querySelector('.data-paid').textContent = Number(data.totals.paid).toLocaleString() + ' ' + currencySymbol;

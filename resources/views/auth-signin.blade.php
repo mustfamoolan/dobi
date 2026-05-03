@@ -19,41 +19,7 @@
                     <div class="bg-login card card-body m-0 h-100 border-0">
                         <img src="{{ asset('assets/images/auth/bg-img-2.png') }}" class="img-fluid auth-banner"
                             alt="auth-banner">
-                        <div class="auth-contain">
-                            <div id="carouselExampleIndicators" class="carousel slide" data-bs-ride="carousel">
-                                <div class="carousel-indicators">
-                                    <button type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide-to="0"
-                                        class="active" aria-current="true" aria-label="Slide 1"></button>
-                                    <button type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide-to="1"
-                                        aria-label="Slide 2"></button>
-                                    <button type="button" data-bs-target="#carouselExampleIndicators" data-bs-slide-to="2"
-                                        aria-label="Slide 3"></button>
-                                </div>
-                                <div class="carousel-inner">
-                                    <div class="carousel-item active">
-                                        <div class="text-center text-white my-4 p-4">
-                                            <h3 class="text-white">إدارة ذكية لمشروعك</h3>
-                                            <p class="mt-3">نظام دكان يوفر لك أدوات متكاملة لإدارة المبيعات والمخازن بكل
-                                                سهولة واحترافية.</p>
-                                        </div>
-                                    </div>
-                                    <div class="carousel-item">
-                                        <div class="text-center text-white my-4 p-4">
-                                            <h3 class="text-white">تقارير دقيقة ولحظية</h3>
-                                            <p class="mt-3">تابع أداء عملك من خلال تقارير مفصلة تساعدك على اتخاذ القرارات
-                                                الصحيحة في الوقت المناسب.</p>
-                                        </div>
-                                    </div>
-                                    <div class="carousel-item">
-                                        <div class="text-center text-white my-4 p-4">
-                                            <h3 class="text-white">حماية وأمان للبيانات</h3>
-                                            <p class="mt-3">بياناتك في أمان تام مع نظام دكان، مع إمكانية إدارة الصلاحيات
-                                                والمستخدمين بدقة.</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+
                     </div>
                 </div>
 

@@ -25,19 +25,10 @@
         </button>
 
         <!-- Sidebar Toggle for Mobile -->
-        <button class="btn btn-light-light icon-btn d-md-none small-screen-toggle" id="smallScreenSidebarLabel"
-          type="button" data-bs-toggle="offcanvas" data-bs-target="#smallScreenSidebar"
-          aria-controls="smallScreenSidebar" onclick="if(window.history.length > 1) { window.history.back(); }">
-          <span class="visually-hidden">Sidebar toggle for mobile</span>
-          <i class="ri-arrow-right-fill"></i>
-        </button>
+
 
         <!-- Sidebar Toggle for Horizontal Menu -->
-        <button class="btn btn-light-light icon-btn d-lg-none small-screen-horizontal-toggle" type="button"
-          aria-expanded="false" aria-controls="main-menu" onclick="window.history.back()">
-          <span class="visually-hidden">Sidebar toggle for horizontal</span>
-          <i class="ri-arrow-right-fill"></i>
-        </button>
+
 
         <!-- Smart Search Component -->
         <div class="header-search-container flex-grow-1" style="max-width: 400px;">
@@ -47,36 +38,22 @@
 
       <div class="header-right hstack gap-3">
         <div class="hstack gap-0 gap-sm-1">
-
-
-
-
           <!-- Language -->
           <div class="dropdown features-dropdown" id="language-dropdown">
             <a href="#!" class="btn icon-btn btn-text-primary rounded-circle" data-bs-toggle="dropdown"
               aria-expanded="false">
-              <div class="avatar-item avatar-xs">
-                @if(app()->getLocale() == 'ar')
-                  <img class="img-fluid avatar-xs" src="{{ asset('assets/images/flags/ae.svg') }}" loading="lazy"
-                    alt="ar">
-                @else
-                  <img class="img-fluid avatar-xs" src="{{ asset('assets/images/flags/us.svg') }}" loading="lazy"
-                    alt="en">
-                @endif
+              <div class="avatar-item avatar-xs d-flex align-items-center justify-content-center">
+                <i class="ri-global-line fs-18"></i>
               </div>
             </a>
 
             <div class="dropdown-menu dropdown-menu-end">
               <a href="{{ route('lang.switch', 'ar') }}"
                 class="dropdown-item py-2 {{ app()->getLocale() == 'ar' ? 'active' : '' }}">
-                <img src="{{ asset('assets/images/flags/ae.svg') }}" alt="ar" loading="lazy"
-                  class="me-2 rounded h-20px w-20px img-fluid object-fit-cover">
                 <span class="align-middle">{{ __('Arabic') }}</span>
               </a>
               <a href="{{ route('lang.switch', 'en') }}"
                 class="dropdown-item py-2 {{ app()->getLocale() == 'en' ? 'active' : '' }}">
-                <img src="{{ asset('assets/images/flags/us.svg') }}" alt="en" loading="lazy"
-                  class="me-2 rounded h-20px w-20px img-fluid object-fit-cover">
                 <span class="align-middle">{{ __('English') }}</span>
               </a>
             </div>
