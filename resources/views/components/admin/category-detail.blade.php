@@ -74,7 +74,7 @@ new class extends Component {
                             <thead class="table-light">
                                 <tr>
                                     <th>{{ __('Product Name') }}</th>
-                                    <th>{{ __('Warehouse') }}</th>
+                                    <th>{{ __('Stock per Warehouse') }}</th>
                                     <th>{{ __('Unit') }}</th>
                                     <th>{{ __('Cost') }}</th>
                                     <th>{{ __('Price') }}</th>
@@ -88,7 +88,23 @@ new class extends Component {
                                     <tr>
                                         <td>{{ $product->name }}</td>
                                         <td>
-                                            <span class="text-muted">{{ $product->warehouses_list }}</span>
+                                            @php
+                                                $stocks = \App\Models\StockMovement::query()
+                                                    ->select('warehouse_id')
+                                                    ->selectRaw('SUM(qty_in) - SUM(qty_out) as total')
+                                                    ->where('product_id', $product->id)
+                                                    ->groupBy('warehouse_id')
+                                                    ->havingRaw('SUM(qty_in) - SUM(qty_out) > 0')
+                                                    ->get();
+                                                $warehouseNames = \App\Models\Warehouse::whereIn('id', $stocks->pluck('warehouse_id'))->pluck('name', 'id');
+                                            @endphp
+                                            @forelse($stocks as $st)
+                                                <small class="d-block text-muted">
+                                                    {{ $warehouseNames[$st->warehouse_id] ?? 'Unknown' }}: <strong>{{ number_format($st->total, 0) }}</strong>
+                                                </small>
+                                            @empty
+                                                <span class="text-danger small">{{ __('No Stock') }}</span>
+                                            @endforelse
                                         </td>
                                         <td>{{ $product->unit }}</td>
                                         <td>{{ number_format($product->cost, 2) }} {{ $product->currency }}</td>

@@ -71,17 +71,23 @@ class Product extends Model
     }
     public function getWarehousesListAttribute()
     {
-        $warehouseIds = StockMovement::query()
+        $stocks = StockMovement::query()
             ->select('warehouse_id')
+            ->selectRaw('SUM(qty_in) - SUM(qty_out) as total')
             ->where('product_id', $this->id)
             ->groupBy('warehouse_id')
             ->havingRaw('SUM(qty_in) - SUM(qty_out) > 0')
-            ->pluck('warehouse_id');
+            ->get();
 
-        if ($warehouseIds->isEmpty()) {
+        if ($stocks->isEmpty()) {
             return __('No Stock');
         }
 
-        return Warehouse::whereIn('id', $warehouseIds)->pluck('name')->implode(', ');
+        $warehouseNames = Warehouse::whereIn('id', $stocks->pluck('warehouse_id'))->pluck('name', 'id');
+
+        return $stocks->map(function($stock) use ($warehouseNames) {
+            $name = $warehouseNames[$stock->warehouse_id] ?? 'Unknown';
+            return "{$name} ({$stock->total})";
+        })->implode(', ');
     }
 }

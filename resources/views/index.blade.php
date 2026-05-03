@@ -59,7 +59,7 @@
                                     <div class="bg-warning-subtle text-warning avatar avatar-item rounded-2">
                                         <i class="ri-wallet-3-line fs-16 fw-medium"></i>
                                     </div>
-                                    <h6 class="mb-0 fs-13">{{ __('Treasury Balance') }}</h6>
+                                    <h6 class="mb-0 fs-13">رصيد الصناديق (عراقي)</h6>
                                 </div>
                                 <h4 class="fw-semibold fs-5 mb-0">
                                     <span>{{ number_format($treasury_total, 0) }}</span>
