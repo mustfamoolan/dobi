@@ -1,6 +1,7 @@
 @php
-    $voucher = \App\Models\Voucher::with(['customer', 'supplier', 'employee'])->find($id);
+    $voucher = \App\Models\Voucher::findOrFail($id);
     $setting = \App\Models\AppSetting::first();
+    $account = $voucher->account;
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="{{ app()->getLocale() == 'ar' ? 'rtl' : 'ltr' }}">
@@ -175,16 +176,13 @@
         <div class="field">
             <span class="label">{{ $voucher->type == 'receipt' ? __('Received From') : __('Paid To') }}</span>
             <span class="value">
-                @if($voucher->customer_id) {{ $voucher->customer->name }}
-                @elseif($voucher->supplier_id) {{ $voucher->supplier->name }}
-                @elseif($voucher->employee_id) {{ $voucher->employee->name }}
-                @else {{ __('General') }} @endif
+                {{ $account->name ?? __('General') }}
             </span>
         </div>
 
         <div class="field" style="margin-top: 20px;">
-            <span class="label">{{ __('Description') }}</span>
-            <span class="value">{{ $voucher->description }}</span>
+            <span class="label">{{ __('Notes') }}</span>
+            <span class="value">{{ $voucher->notes }}</span>
         </div>
 
         <div class="amount-section">

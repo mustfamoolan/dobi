@@ -385,5 +385,7 @@
     "New Payment Voucher": "سند صرف جديد",
     "Low Stock Alert": "تنبيه مخزون منخفض",
     "Stock per Warehouse": "رصيد كل مخزن",
+    "General": "عام",
+    "Affect Balance": "تأثير على الرصيد",
     "Converted to Invoice": "تم التحويل إلى فاتورة"
 }

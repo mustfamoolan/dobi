@@ -27,8 +27,9 @@ new class extends Component {
     public $date;
     public $financial_account_id;
     public $type = 'receipt'; // receipt, payment
-    public $account_type = 'customer'; // customer, supplier, employee
+    public $account_type = 'general'; // general, customer, supplier, employee
     public $account_id;
+    public $affect_ledger = true;
     public $amount;
     public $currency = 'USD';
     public $exchange_rate;
@@ -63,14 +64,14 @@ new class extends Component {
             'date' => 'required|date',
             'financial_account_id' => 'required|exists:financial_accounts,id',
             'type' => 'required|in:receipt,payment',
-            'account_type' => 'required|in:customer,supplier,employee',
-            'account_id' => 'required',
+            'account_type' => 'required|in:general,customer,supplier,employee',
+            'account_id' => 'required_if:account_type,customer,supplier,employee',
             'amount' => 'required|numeric|min:0.01',
             'currency' => 'required|string',
             'exchange_rate' => 'required|numeric|min:1',
         ]);
 
-        DB::transaction(function () {
+        $voucher = DB::transaction(function () {
             // 1. Create Voucher record
             $voucher = Voucher::create([
                 'date' => $this->date,
@@ -93,54 +94,58 @@ new class extends Component {
                 $destinationLabel = Supplier::find($this->account_id)?->name;
             elseif ($this->account_type === 'employee')
                 $destinationLabel = Employee::find($this->account_id)?->name;
+            elseif ($this->account_type === 'general')
+                $destinationLabel = __('General');
 
             $description = ucfirst($this->type) . ' Voucher #' . $voucher->id . ($this->notes ? ': ' . $this->notes : '');
 
-            if ($this->account_type === 'customer') {
-                CustomerLedger::create([
-                    'customer_id' => $this->account_id,
-                    'date' => $this->date,
-                    'type' => $this->type,
-                    'description' => $description,
-                    'currency' => $this->currency,
-                    'exchange_rate' => $this->exchange_rate,
-                    'debit' => $this->type === 'payment' ? $this->amount : 0,
-                    'credit' => $this->type === 'receipt' ? $this->amount : 0,
-                    'balance' => 0,
-                    'ref_type' => 'voucher',
-                    'ref_id' => $voucher->id,
-                    'created_by' => Auth::id(),
-                ]);
-            } elseif ($this->account_type === 'supplier') {
-                SupplierLedger::create([
-                    'supplier_id' => $this->account_id,
-                    'date' => $this->date,
-                    'type' => $this->type,
-                    'description' => $description,
-                    'currency' => $this->currency,
-                    'exchange_rate' => $this->exchange_rate,
-                    'debit' => $this->type === 'payment' ? $this->amount : 0,
-                    'credit' => $this->type === 'receipt' ? $this->amount : 0,
-                    'balance' => 0,
-                    'ref_type' => 'voucher',
-                    'ref_id' => $voucher->id,
-                    'created_by' => Auth::id(),
-                ]);
-            } elseif ($this->account_type === 'employee') {
-                EmployeeLedger::create([
-                    'employee_id' => $this->account_id,
-                    'date' => $this->date,
-                    'type' => $this->type === 'receipt' ? 'repayment' : 'payment',
-                    'description' => $description,
-                    'currency' => $this->currency,
-                    'exchange_rate' => $this->exchange_rate,
-                    'debit' => $this->type === 'payment' ? $this->amount : 0,
-                    'credit' => $this->type === 'receipt' ? $this->amount : 0,
-                    'balance' => 0,
-                    'ref_type' => 'voucher',
-                    'ref_id' => $voucher->id,
-                    'created_by' => Auth::id(),
-                ]);
+            if ($this->affect_ledger) {
+                if ($this->account_type === 'customer') {
+                    CustomerLedger::create([
+                        'customer_id' => $this->account_id,
+                        'date' => $this->date,
+                        'type' => $this->type,
+                        'description' => $description,
+                        'currency' => $this->currency,
+                        'exchange_rate' => $this->exchange_rate,
+                        'debit' => $this->type === 'payment' ? $this->amount : 0,
+                        'credit' => $this->type === 'receipt' ? $this->amount : 0,
+                        'balance' => 0,
+                        'ref_type' => 'voucher',
+                        'ref_id' => $voucher->id,
+                        'created_by' => Auth::id(),
+                    ]);
+                } elseif ($this->account_type === 'supplier') {
+                    SupplierLedger::create([
+                        'supplier_id' => $this->account_id,
+                        'date' => $this->date,
+                        'type' => $this->type,
+                        'description' => $description,
+                        'currency' => $this->currency,
+                        'exchange_rate' => $this->exchange_rate,
+                        'debit' => $this->type === 'payment' ? $this->amount : 0,
+                        'credit' => $this->type === 'receipt' ? $this->amount : 0,
+                        'balance' => 0,
+                        'ref_type' => 'voucher',
+                        'ref_id' => $voucher->id,
+                        'created_by' => Auth::id(),
+                    ]);
+                } elseif ($this->account_type === 'employee') {
+                    EmployeeLedger::create([
+                        'employee_id' => $this->account_id,
+                        'date' => $this->date,
+                        'type' => $this->type === 'receipt' ? 'repayment' : 'payment',
+                        'description' => $description,
+                        'currency' => $this->currency,
+                        'exchange_rate' => $this->exchange_rate,
+                        'debit' => $this->type === 'payment' ? $this->amount : 0,
+                        'credit' => $this->type === 'receipt' ? $this->amount : 0,
+                        'balance' => 0,
+                        'ref_type' => 'voucher',
+                        'ref_id' => $voucher->id,
+                        'created_by' => Auth::id(),
+                    ]);
+                }
             }
 
             // 3. Record in Treasury/Cashbox Ledger
@@ -166,6 +171,8 @@ new class extends Component {
 
             // 4. Update Treasury Current Balance
             $account->increment('current_balance', $this->type === 'receipt' ? $treasuryAmount : -$treasuryAmount);
+
+            return $voucher;
         });
 
         session()->flash('success', 'Voucher created successfully.');
@@ -252,8 +259,8 @@ new class extends Component {
                                 </td>
                                 <td>
                                     <small
-                                        class="text-muted d-block text-uppercase">{{ __($voucher->account_type) }}</small>
-                                    {{ $voucher->account->name ?? __('Deleted') }}
+                                        class="text-muted d-block text-uppercase">{{ __($voucher->account_type ?? 'general') }}</small>
+                                    {{ $voucher->account->name ?? ($voucher->account_type === 'general' ? '-' : __('Deleted')) }}
                                 </td>
                                 <td>
                                     <span class="badge bg-light text-dark">
@@ -303,6 +310,7 @@ new class extends Component {
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">{{ __('Account Type') }}</label>
                                 <select wire:model.live="account_type" class="form-select">
+                                    <option value="general">{{ __('General') }}</option>
                                     <option value="customer">{{ __('Customer') }}</option>
                                     <option value="supplier">{{ __('Supplier') }}</option>
                                     <option value="employee">{{ __('Employee') }}</option>
@@ -310,27 +318,37 @@ new class extends Component {
                             </div>
                         </div>
 
+                        @if($account_type !== 'general')
+                            <div class="mb-3">
+                                <label class="form-label">{{ __('Select') }} {{ __($account_type) }}</label>
+                                <select wire:model="account_id"
+                                    class="form-select @error('account_id') is-invalid @enderror">
+                                    <option value="">{{ __('Choose...') }}</option>
+                                    @foreach($accounts as $account)
+                                        <option value="{{ $account->id }}">{{ $account->name }}</option>
+                                    @endforeach
+                                </select>
+                                @error('account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" wire:model="affect_ledger" id="affectLedger">
+                                <label class="form-check-label" for="affectLedger">
+                                    {{ __('Affect Balance') }} ({{ __($account_type) }})
+                                </label>
+                            </div>
+                        @endif
+                        
                         <div class="mb-3">
                             <label class="form-label">{{ __('Select Treasury / Account') }}</label>
                             <select wire:model="financial_account_id"
                                 class="form-select @error('financial_account_id') is-invalid @enderror">
+                                <option value="">{{ __('Choose...') }}</option>
                                 @foreach($financialAccounts as $fa)
                                     <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
                                 @endforeach
                             </select>
                             @error('financial_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">{{ __('Select') }} {{ __($account_type) }}</label>
-                            <select wire:model="account_id"
-                                class="form-select @error('account_id') is-invalid @enderror">
-                                <option value="">{{ __('Choose...') }}</option>
-                                @foreach($accounts as $account)
-                                    <option value="{{ $account->id }}">{{ $account->name }}</option>
-                                @endforeach
-                            </select>
-                            @error('account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
 
                         <div class="row">
