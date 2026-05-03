@@ -93,6 +93,25 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::get('/accounts/{id}/ledger', function ($id) {
         return view('admin.account-ledger', ['id' => $id]);
     })->name('accounts.ledger');
+    
+    Route::get('/accounts/{id}/ledger/print', function (Illuminate\Http\Request $request, $id) {
+        $fromDate = $request->query('fromDate', now()->startOfMonth()->format('Y-m-d'));
+        $toDate = $request->query('toDate', now()->format('Y-m-d'));
+        
+        $account = \App\Models\FinancialAccount::findOrFail($id);
+        $entries = \App\Models\AccountLedger::where('account_id', $id)
+            ->whereBetween('date', [$fromDate, $toDate])
+            ->orderBy('date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $previousBalance = \App\Models\AccountLedger::where('account_id', $id)
+            ->where('date', '<', $fromDate)
+            ->selectRaw('SUM(debit) - SUM(credit) as balance')
+            ->first()->balance ?? 0;
+
+        return view('admin.account-ledger-print', compact('account', 'entries', 'previousBalance', 'fromDate', 'toDate'));
+    })->name('accounts.ledger.print');
 
     // Phase 10: Reports
     Route::prefix('reports')->name('reports.')->group(function () {

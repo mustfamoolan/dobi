@@ -50,44 +50,96 @@ new class extends Component {
     <style>
         .print-header { display: none; }
         @media print {
-            .app-header, .app-sidebar, .card-header .btn, .card-header input, .card-header select, .mt-4, .footer, .breadcrumb, .sidebar-toggle, .small-screen-toggle, .switcher-wrapper, .btn-primary, .btn-soft-secondary {
+            @page { size: A4 portrait; margin: 10mm; }
+            body { 
+                background-color: white !important; 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                font-family: 'Calibri', 'Arial', sans-serif !important; 
+                direction: rtl;
+                color: #000 !important;
+            }
+            .app-header, .app-sidebar, .card-header, .mt-4, .footer, .breadcrumb, .sidebar-toggle, .small-screen-toggle, .switcher-wrapper, .btn {
                 display: none !important;
             }
-            body { background-color: white !important; margin: 0 !important; padding: 0 !important; }
             .row, .col-12 { margin: 0 !important; padding: 0 !important; width: 100% !important; }
             .card { border: none !important; box-shadow: none !important; width: 100% !important; }
             .card-body { padding: 0 !important; }
             .table-responsive { overflow: visible !important; }
-            table { width: 100% !important; border-collapse: collapse !important; border: 1px solid #000 !important; font-size: 14px !important; }
-            table th, table td { border: 1px solid #000 !important; padding: 8px !important; color: black !important; }
-            table thead th { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; font-weight: bold !important; text-align: center !important; }
+            
+            /* EXCEL LIKE TABLE */
+            table { 
+                width: 100% !important; 
+                border-collapse: collapse !important; 
+                font-size: 10pt !important; 
+            }
+            table th, table td { 
+                border: 1px solid #000000 !important; 
+                padding: 4px 6px !important; 
+                color: #000 !important; 
+                vertical-align: middle !important;
+            }
+            table thead th { 
+                background-color: #e6e6e6 !important; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact;
+                font-weight: bold !important; 
+                text-align: center !important; 
+                border-bottom: 2px solid #000000 !important;
+            }
+            
+            .text-end { text-align: left !important; }
+            .text-success, .text-danger { color: #000 !important; } /* Force black text for print */
+            
             thead { display: table-header-group !important; }
-            .table-info { background-color: #e2f0fb !important; -webkit-print-color-adjust: exact; }
-            .print-header { display: block !important; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #000; }
+            .table-info { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            
+            /* HEADER LAYOUT */
+            .print-header { 
+                display: block !important; 
+                margin-bottom: 15px; 
+            }
+            .excel-header-table { margin-bottom: 15px !important; border: none !important; }
+            .excel-header-table td { border: none !important; padding: 0 !important; }
+            
+            .meta-table { margin-bottom: 15px !important; }
+            .meta-table th { background-color: #e6e6e6 !important; font-weight: bold; width: 15%; text-align: right !important; }
+            .meta-table td { width: 35%; text-align: right !important; font-weight: bold; }
+            
+            .badge { border: none !important; padding: 0 !important; color: #000 !important; font-weight: normal !important; background: transparent !important; }
         }
     </style>
 
     <div class="print-header">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div class="text-start">
-                <img height="50" src="{{ asset('assets/images/DOKKAN.png') }}" class="mb-2">
-                <h4 class="mb-0">{{ config('app.name') }}</h4>
-            </div>
-            <div class="text-end">
-                <h2 class="mb-0">{{ __('Treasury Statement') }}</h2>
-                <p class="mb-0 small text-muted">{{ date('Y-m-d H:i') }}</p>
-            </div>
-        </div>
-        <div class="row align-items-center">
-            <div class="col-6">
-                <strong>{{ __('Account') }}:</strong> {{ $account->name }}<br>
-                <strong>{{ __('Type') }}:</strong> {{ $account->type }}
-            </div>
-            <div class="col-6 text-end">
-                <strong>{{ __('Period') }}:</strong> {{ $fromDate }} - {{ $toDate }}<br>
-                <strong>{{ __('Currency') }}:</strong> {{ $account->currency }}
-            </div>
-        </div>
+        <table class="excel-header-table">
+            <tr>
+                <td style="text-align:right; width: 33%; vertical-align: top;">
+                    <img height="40" src="{{ asset('assets/images/DOKKAN.png') }}" class="mb-1"><br>
+                    <strong style="font-size: 12pt;">{{ config('app.name') }}</strong>
+                </td>
+                <td style="text-align:center; width: 33%; vertical-align: middle;">
+                    <h2 style="margin:0; font-weight:bold; font-size: 16pt;">كشف حساب تفصيلي</h2>
+                </td>
+                <td style="text-align:left; width: 33%; vertical-align: top; font-size: 9pt;">
+                    تاريخ الطباعة: {{ date('Y-m-d H:i') }}
+                </td>
+            </tr>
+        </table>
+        
+        <table class="meta-table">
+            <tr>
+                <th>{{ __('Account') }}</th>
+                <td>{{ $account->name }}</td>
+                <th>{{ __('Period') }}</th>
+                <td dir="ltr" style="text-align: left !important;">{{ $fromDate }} <span>&rarr;</span> {{ $toDate }}</td>
+            </tr>
+            <tr>
+                <th>{{ __('Type') }}</th>
+                <td>{{ $account->type == 'cash' ? __('Cash') : __('Bank') }}</td>
+                <th>{{ __('Currency') }}</th>
+                <td dir="ltr" style="text-align: left !important;">{{ $account->currency }}</td>
+            </tr>
+        </table>
     </div>
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
@@ -101,9 +153,9 @@ new class extends Component {
             <div class="d-flex gap-2">
                 <input type="date" wire:model.live="fromDate" class="form-control form-control-sm">
                 <input type="date" wire:model.live="toDate" class="form-control form-control-sm">
-                <button onclick="window.print()" class="btn btn-soft-secondary btn-sm">
-                    <i class="ri-printer-line"></i> {{ __('Print') }}
-                </button>
+                <a href="{{ route('admin.accounts.ledger.print', ['id' => $account->id, 'fromDate' => $fromDate, 'toDate' => $toDate]) }}" target="_blank" class="btn btn-soft-secondary btn-sm d-flex align-items-center">
+                    <i class="ri-printer-line me-1"></i> {{ __('Print') }}
+                </a>
             </div>
         </div>
         <div class="card-body">
