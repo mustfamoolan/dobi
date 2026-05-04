@@ -327,7 +327,7 @@
         .summary-grid {
             margin-top: 5mm;
             display: grid;
-            grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr 1fr 1.2fr;
             border: 1px solid #32267d;
             font-size: 8.5pt;
             direction: rtl;
@@ -389,7 +389,7 @@
         }
 
         .total-in-words {
-            grid-column: span 6; /* updated for 6 columns */
+            grid-column: span 5; /* updated for 5 columns */
             padding: 2mm;
             text-align: center;
             font-weight: bold;
@@ -524,46 +524,35 @@
                 </div>
 
                 <div class="summary-grid">
-                    <div class="summary-cell highlight-cell">
-                        <div class="summary-label-row">
-                            <span class="summary-label">المبلغ الإجمالي</span>
-                        </div>
-                        <span class="summary-value data-net">0</span>
-                    </div>
                     <div class="summary-cell">
                         <div class="summary-label-row">
-                            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 7h6v2H9V7zm0 4h2v2H9v-2zm4 0h2v2h-2v-2zm-4 4h2v2H9v-2zm4 0h2v2h-2v-2z"></path></svg>
-                            <span class="summary-label">المجموع</span>
-                        </div>
-                        <span class="summary-value data-subtotal">0</span>
-                    </div>
-                    <div class="summary-cell">
-                        <div class="summary-label-row">
-                            <svg viewBox="0 0 24 24"><circle cx="9" cy="15" r="2.5"></circle><circle cx="15" cy="9" r="2.5"></circle><path d="M18.8 6.6l-1.4-1.4-10.8 10.8 1.4 1.4L18.8 6.6z"></path><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg>
-                            <span class="summary-label">الخصم</span>
-                        </div>
-                        <span class="summary-value data-discount">0</span>
-                    </div>
-                    <div class="summary-cell">
-                        <div class="summary-label-row">
-                            <svg viewBox="0 0 24 24"><path d="M2 17h2v.5H3v1h1v.5H2v1h3v-4H2v1zm1-9h1V4H2v1h1v3zm-1 3h1.8L2 13.1v.9h3v-1H3.2L5 10.9V10H2v1zm5-6v2h14V5H7zm0 14h14v-2H7v2zm0-6h14v-2H7v2z"></path></svg>
-                            <span class="summary-label">المبلغ الواصل</span>
-                        </div>
-                        <span class="summary-value data-paid">0</span>
-                    </div>
-                    <div class="summary-cell">
-                        <div class="summary-label-row">
-                            <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"></path></svg>
                             <span class="summary-label">الرصيد الحالي</span>
                         </div>
                         <span class="summary-value data-total-balance">0</span>
                     </div>
                     <div class="summary-cell">
                         <div class="summary-label-row">
-                            <svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"></path></svg>
                             <span class="summary-label">الرصيد السابق</span>
                         </div>
                         <span class="summary-value data-previous">---</span>
+                    </div>
+                    <div class="summary-cell">
+                        <div class="summary-label-row">
+                            <span class="summary-label">المبلغ الواصل</span>
+                        </div>
+                        <span class="summary-value data-paid">0</span>
+                    </div>
+                    <div class="summary-cell">
+                        <div class="summary-label-row">
+                            <span class="summary-label">الخصم</span>
+                        </div>
+                        <span class="summary-value data-discount">0</span>
+                    </div>
+                    <div class="summary-cell highlight-cell">
+                        <div class="summary-label-row">
+                            <span class="summary-label">المبلغ الإجمالي</span>
+                        </div>
+                        <span class="summary-value data-net">0</span>
                     </div>
                     <div class="total-in-words data-words"></div>
                 </div>
@@ -634,7 +623,9 @@
                 if (i === totalPages - 1) {
                     page.querySelector('.data-words').textContent = data.totals.words;
                     page.querySelector('.data-net').textContent = Number(data.totals.net).toLocaleString() + ' ' + currencySymbol;
-                    page.querySelector('.data-subtotal').textContent = Number(data.totals.subtotal).toLocaleString() + ' ' + currencySymbol;
+                    if (page.querySelector('.data-subtotal')) {
+                        page.querySelector('.data-subtotal').textContent = Number(data.totals.subtotal).toLocaleString() + ' ' + currencySymbol;
+                    }
                     page.querySelector('.data-discount').textContent = Number(data.totals.discount).toLocaleString() + ' ' + currencySymbol;
                     page.querySelector('.data-paid').textContent = Number(data.totals.paid).toLocaleString() + ' ' + currencySymbol;
                     page.querySelector('.data-previous').textContent = Number(data.totals.previous).toLocaleString() + ' ' + currencySymbol;

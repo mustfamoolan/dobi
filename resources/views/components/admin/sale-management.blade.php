@@ -178,6 +178,18 @@ new class extends Component {
             $qty = (float)($this->items[$index]['qty'] ?: 0);
             $price = (float)($this->items[$index]['price'] ?: 0);
             
+            // If invoice, check stock when qty changes
+            if ($this->type === 'invoice' && str_contains($key, '.qty')) {
+                $product = Product::find($this->items[$index]['product_id']);
+                if ($product && $this->warehouse_id) {
+                    $warehouseStock = $product->currentStock($this->warehouse_id);
+                    if ($warehouseStock < $qty) {
+                        $msg = __('Insufficient stock in selected warehouse.') . ' | ' . __('المخزون غير كافٍ في المخزن المحدد') . ' (' . __('Available') . ': ' . $warehouseStock . ')';
+                        $this->addError("items.$index.qty", $msg);
+                    }
+                }
+            }
+
             $this->items[$index]['subtotal'] = $qty * $price;
         }
     }
@@ -192,10 +204,27 @@ new class extends Component {
 
         $product = Product::find($this->selected_product_id);
 
-        // Check stock availability (optional but recommended)
-        if ($product->stock < $this->item_qty) {
-            $this->addError('item_qty', 'Insufficient stock. Available: ' . $product->stock);
+        if (!$this->warehouse_id) {
+            $this->addError('selected_product_id', __('Please select a warehouse first.'));
             return;
+        }
+
+        // Check stock availability in the selected warehouse (only for invoices)
+        if ($this->type === 'invoice') {
+            $warehouseStock = $product->currentStock($this->warehouse_id);
+            
+            $existingQty = 0;
+            foreach ($this->items as $item) {
+                if ($item['product_id'] == $product->id) {
+                    $existingQty += $item['qty'];
+                }
+            }
+
+            if ($warehouseStock < ($this->item_qty + $existingQty)) {
+                $msg = __('Insufficient stock in selected warehouse.') . ' | ' . __('المخزون غير كافٍ في المخزن المحدد') . ' (' . __('Available') . ': ' . $warehouseStock . ')';
+                $this->addError('item_qty', $msg);
+                return;
+            }
         }
 
         // Check if item already exists in the list
@@ -253,6 +282,31 @@ new class extends Component {
             'items.*.qty.required' => __('Quantity is required for all items.'),
             'items.*.price.required' => __('Price is required for all items.'),
         ]);
+
+        if ($this->type === 'invoice') {
+            foreach ($this->items as $index => $item) {
+                $product = Product::find($item['product_id']);
+                if ($product) {
+                    $stock = $product->currentStock($this->warehouse_id);
+                    // if editing, add back the qty that was in the original sale for this product and this warehouse
+                    if ($this->editingId) {
+                        $originalSale = Sale::with('items')->find($this->editingId);
+                        if ($originalSale && $originalSale->warehouse_id == $this->warehouse_id) {
+                            $originalItem = $originalSale->items->where('product_id', $item['product_id'])->first();
+                            if ($originalItem) {
+                                $stock += $originalItem->qty;
+                            }
+                        }
+                    }
+                    
+                    if ($stock < $item['qty']) {
+                        $msg = __('Insufficient stock in selected warehouse.') . ' | ' . __('المخزون غير كافٍ في المخزن المحدد') . ' (' . __('Available') . ': ' . $stock . ')';
+                        $this->addError("items.{$index}.qty", $msg);
+                        return;
+                    }
+                }
+            }
+        }
 
         $saleId = null; // will be set inside transaction
 
@@ -907,7 +961,7 @@ new class extends Component {
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">{{ __('Warehouse') }}</label>
-                                <select wire:model="warehouse_id"
+                                <select wire:model.live="warehouse_id"
                                     class="form-select @error('warehouse_id') is-invalid @enderror">
                                     <option value="">{{ __('Select Warehouse') }}</option>
                                     @foreach($warehouses as $warehouse)
@@ -970,7 +1024,11 @@ new class extends Component {
                                         <select wire:model.live="selected_product_id" class="form-select">
                                             <option value="">{{ __('Choose Product...') }}</option>
                                             @foreach($products as $product)
-                                                <option value="{{ $product->id }}">{{ $product->name }} - {{ __('Stock') }}: {{ $product->stock }}
+                                                @php
+                                                    $wStock = $this->warehouse_id ? $product->currentStock($this->warehouse_id) : $product->stock;
+                                                @endphp
+                                                <option value="{{ $product->id }}">
+                                                    {{ $product->name }} - {{ __('Stock') }}: {{ $wStock }}
                                                 </option>
                                             @endforeach
                                         </select>
@@ -1243,7 +1301,7 @@ new class extends Component {
                         .preview-summary-grid {
                             margin-top: 5mm;
                             display: grid;
-                            grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr 1fr;
+                            grid-template-columns: 1fr 1fr 1fr 1fr 1.2fr;
                             border: 1px solid #32267d;
                             font-size: 8.5pt;
                             direction: rtl;
@@ -1305,7 +1363,7 @@ new class extends Component {
                         }
 
                         .preview-total-in-words {
-                            grid-column: span 6;
+                            grid-column: span 5;
                             padding: 2mm;
                             text-align: center;
                             font-weight: bold;
@@ -1397,46 +1455,35 @@ new class extends Component {
                                     @endif
 
                                     <div class="preview-summary-grid">
-                                        <div class="preview-summary-cell highlight-cell">
-                                            <div class="preview-summary-label-row">
-                                                <span class="preview-summary-label">المبلغ الإجمالي</span>
-                                            </div>
-                                            <span class="preview-summary-value">{{ number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
-                                        </div>
                                         <div class="preview-summary-cell">
                                             <div class="preview-summary-label-row">
-                                                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 7h6v2H9V7zm0 4h2v2H9v-2zm4 0h2v2h-2v-2zm-4 4h2v2H9v-2zm4 0h2v2h-2v-2z"></path></svg>
-                                                <span class="preview-summary-label">المجموع</span>
-                                            </div>
-                                            <span class="preview-summary-value">{{ number_format($viewingSale->total, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
-                                        </div>
-                                        <div class="preview-summary-cell">
-                                            <div class="preview-summary-label-row">
-                                                <svg viewBox="0 0 24 24"><circle cx="9" cy="15" r="2.5"></circle><circle cx="15" cy="9" r="2.5"></circle><path d="M18.8 6.6l-1.4-1.4-10.8 10.8 1.4 1.4L18.8 6.6z"></path><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg>
-                                                <span class="preview-summary-label">الخصم</span>
-                                            </div>
-                                            <span class="preview-summary-value">{{ number_format($viewingSale->discount, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
-                                        </div>
-                                        <div class="preview-summary-cell">
-                                            <div class="preview-summary-label-row">
-                                                <svg viewBox="0 0 24 24"><path d="M2 17h2v.5H3v1h1v.5H2v1h3v-4H2v1zm1-9h1V4H2v1h1v3zm-1 3h1.8L2 13.1v.9h3v-1H3.2L5 10.9V10H2v1zm5-6v2h14V5H7zm0 14h14v-2H7v2zm0-6h14v-2H7v2z"></path></svg>
-                                                <span class="preview-summary-label">المبلغ الواصل</span>
-                                            </div>
-                                            <span class="preview-summary-value">{{ number_format($viewingSale->paidAmount(), $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
-                                        </div>
-                                        <div class="preview-summary-cell">
-                                            <div class="preview-summary-label-row">
-                                                <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"></path></svg>
                                                 <span class="preview-summary-label">الرصيد الحالي</span>
                                             </div>
                                             <span class="preview-summary-value">{{ number_format($viewingPreviousBalance + $viewingSale->remainingAmount(), $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-summary-cell">
                                             <div class="preview-summary-label-row">
-                                                <svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"></path></svg>
                                                 <span class="preview-summary-label">الرصيد السابق</span>
                                             </div>
                                             <span class="preview-summary-value">{{ number_format($viewingPreviousBalance, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <div class="preview-summary-label-row">
+                                                <span class="preview-summary-label">المبلغ الواصل</span>
+                                            </div>
+                                            <span class="preview-summary-value">{{ number_format($viewingSale->paidAmount(), $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell">
+                                            <div class="preview-summary-label-row">
+                                                <span class="preview-summary-label">الخصم</span>
+                                            </div>
+                                            <span class="preview-summary-value">{{ number_format($viewingSale->discount, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                        </div>
+                                        <div class="preview-summary-cell highlight-cell">
+                                            <div class="preview-summary-label-row">
+                                                <span class="preview-summary-label">المبلغ الإجمالي</span>
+                                            </div>
+                                            <span class="preview-summary-value">{{ number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-total-in-words">
                                             {{ \App\Services\ArabicAmountToWords::translate($viewingSale->grand_total, $viewingSale->currency) }}
