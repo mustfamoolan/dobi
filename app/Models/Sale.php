@@ -58,15 +58,44 @@ class Sale extends Model
 
     public function paidAmount()
     {
-        return CustomerLedger::where('ref_type', 'sale')
+        $directPayments = CustomerLedger::where('ref_type', 'sale')
             ->where('ref_id', $this->id)
             ->where('type', 'payment')
             ->sum('credit');
+
+        $vouchers = Voucher::where('sale_id', $this->id)->get();
+        $voucherTotal = 0;
+        foreach ($vouchers as $v) {
+            if ($v->currency === $this->currency) {
+                $voucherTotal += $v->amount;
+            } else {
+                if ($this->currency === 'IQD' && $v->currency === 'USD') {
+                    $voucherTotal += $v->amount * $v->exchange_rate;
+                } elseif ($this->currency === 'USD' && $v->currency === 'IQD') {
+                    $voucherTotal += $v->amount / ($v->exchange_rate ?: 1);
+                }
+            }
+        }
+
+        return $directPayments + $voucherTotal;
     }
 
     public function remainingAmount()
     {
         return max(0, $this->grand_total - $this->paidAmount());
+    }
+
+    public function updatePaymentStatus()
+    {
+        $remaining = $this->remainingAmount();
+        if ($remaining <= 0) {
+            $this->payment_status = 'paid';
+        } elseif ($remaining < $this->grand_total) {
+            $this->payment_status = 'partial';
+        } else {
+            $this->payment_status = 'unpaid';
+        }
+        $this->save();
     }
 
     public function updater()

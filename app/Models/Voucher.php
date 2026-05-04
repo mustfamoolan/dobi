@@ -16,6 +16,7 @@ class Voucher extends Model
         'currency',
         'exchange_rate',
         'notes',
+        'sale_id',
         'created_by',
     ];
 

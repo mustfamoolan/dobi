@@ -9,6 +9,7 @@ use App\Models\SupplierLedger;
 use App\Models\EmployeeLedger;
 use App\Models\AppSetting;
 use App\Models\FinancialAccount;
+use App\Models\Sale;
 use Livewire\Volt\Component;
 use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
@@ -34,6 +35,8 @@ new class extends Component {
     public $currency = 'USD';
     public $exchange_rate;
     public $notes;
+    public $sale_id;
+    public $unpaidSales = [];
 
     protected $paginationTheme = 'bootstrap';
 
@@ -47,15 +50,53 @@ new class extends Component {
         $this->financial_account_id = FinancialAccount::where('is_active', true)->first()?->id;
     }
 
+    public function updatedAccountId($value)
+    {
+        if ($this->account_type === 'customer' && $value && $this->type === 'receipt') {
+            $this->unpaidSales = Sale::where('customer_id', $value)
+                ->where('type', Sale::TYPE_INVOICE)
+                ->get()
+                ->filter(fn($sale) => $sale->remainingAmount() > 0);
+        } else {
+            $this->unpaidSales = [];
+            $this->sale_id = null;
+        }
+    }
+
+    public function updatedSaleId($value)
+    {
+        if ($value) {
+            $sale = Sale::find($value);
+            if ($sale) {
+                $this->amount = $sale->remainingAmount();
+                $this->currency = $sale->currency;
+                if (!$this->notes) {
+                    $this->notes = "Payment for Invoice #" . $sale->id;
+                }
+            }
+        }
+    }
+
     public function openCreateModal($type = 'receipt')
     {
-        $this->reset(['account_id', 'amount', 'notes']);
+        $this->reset(['account_id', 'amount', 'notes', 'sale_id', 'unpaidSales']);
         $this->type = $type;
         $this->date = now()->format('Y-m-d');
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
         $this->financial_account_id = FinancialAccount::where('is_active', true)->first()?->id;
         $this->dispatch('open-voucher-modal');
+    }
+
+    public function updatedType()
+    {
+        $this->updatedAccountId($this->account_id);
+    }
+
+    public function updatedAccountType()
+    {
+        $this->account_id = null;
+        $this->updatedAccountId(null);
     }
 
     public function save()
@@ -83,6 +124,7 @@ new class extends Component {
                 'currency' => $this->currency,
                 'exchange_rate' => $this->exchange_rate,
                 'notes' => $this->notes,
+                'sale_id' => $this->sale_id,
                 'created_by' => Auth::id(),
             ]);
 
@@ -97,7 +139,13 @@ new class extends Component {
             elseif ($this->account_type === 'general')
                 $destinationLabel = __('General');
 
-            $description = ucfirst($this->type) . ' Voucher #' . $voucher->id . ($this->notes ? ': ' . $this->notes : '');
+            $description = ucfirst($this->type) . ' Voucher #' . $voucher->id;
+            if ($this->sale_id) {
+                $description .= ' (Payment for Invoice #' . $this->sale_id . ')';
+            }
+            if ($this->notes) {
+                $description .= ': ' . $this->notes;
+            }
 
             if ($this->affect_ledger) {
                 if ($this->account_type === 'customer') {
@@ -171,6 +219,14 @@ new class extends Component {
 
             // 4. Update Treasury Current Balance
             $account->increment('current_balance', $this->type === 'receipt' ? $treasuryAmount : -$treasuryAmount);
+
+            // 5. Update Sale payment status if linked
+            if ($this->sale_id) {
+                $sale = Sale::find($this->sale_id);
+                if ($sale) {
+                    $sale->updatePaymentStatus();
+                }
+            }
 
             return $voucher;
         });
@@ -321,7 +377,7 @@ new class extends Component {
                         @if($account_type !== 'general')
                             <div class="mb-3">
                                 <label class="form-label">{{ __('Select') }} {{ __($account_type) }}</label>
-                                <select wire:model="account_id"
+                                <select wire:model.live="account_id"
                                     class="form-select @error('account_id') is-invalid @enderror">
                                     <option value="">{{ __('Choose...') }}</option>
                                     @foreach($accounts as $account)
@@ -330,6 +386,21 @@ new class extends Component {
                                 </select>
                                 @error('account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
+
+                            @if($type === 'receipt' && $account_type === 'customer' && count($unpaidSales) > 0)
+                                <div class="mb-3">
+                                    <label class="form-label">{{ __('Link to Invoice (Optional)') }}</label>
+                                    <select wire:model.live="sale_id" class="form-select">
+                                        <option value="">{{ __('No Link - General Payment') }}</option>
+                                        @foreach($unpaidSales as $sale)
+                                            <option value="{{ $sale->id }}">
+                                                #{{ $sale->id }} - {{ $sale->date }} (Remaining: {{ number_format($sale->remainingAmount(), 0) }} {{ $sale->currency }})
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                    <small class="text-muted">{{ __('Selecting an invoice will auto-fill the amount.') }}</small>
+                                </div>
+                            @endif
 
                             <div class="form-check form-switch mb-3">
                                 <input class="form-check-input" type="checkbox" wire:model="affect_ledger" id="affectLedger">
@@ -354,7 +425,7 @@ new class extends Component {
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">{{ __('Amount') }}</label>
-                                <input type="number" step="1" wire:model="amount"
+                                <input type="number" step="any" wire:model="amount"
                                     class="form-control @error('amount') is-invalid @enderror">
                                 @error('amount') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
@@ -369,7 +440,7 @@ new class extends Component {
 
                         <div class="mb-3">
                             <label class="form-label">{{ __('Exchange Rate (1 USD = ? IQD)') }}</label>
-                            <input type="number" step="1" wire:model="exchange_rate" class="form-control">
+                            <input type="number" step="any" wire:model="exchange_rate" class="form-control">
                             <small class="text-muted">{{ __('Snapshot of current rate.') }}</small>
                         </div>
 
