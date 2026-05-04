@@ -61,6 +61,10 @@
     <meta charset="utf-8" />
     <title>Invoice #{{ $formattedId }}</title>
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+
     <!-- PDF Generation Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -102,11 +106,13 @@
         body {
             margin: 0;
             padding: 0;
-            font-family: 'Tahoma', 'Arial', sans-serif;
+            font-family: 'Cairo', 'Tahoma', 'Arial', sans-serif;
             font-size: var(--font-size-base);
             background: #f0f0f0;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            font-variant-ligatures: common-ligatures;
+            font-feature-settings: "kern", "liga";
         }
 
         .page-container {
@@ -168,12 +174,12 @@
             display: grid;
             grid-template-columns: 1fr 1fr 1.5fr; /* No, Date, Customer (in RTL) */
             gap: 2mm;
-            margin-bottom: 2mm;
+            margin-bottom: 0.5mm;
             color: #32267d;
             border: 1px solid #b0a8d8;
             background: #f3f1fb;
-            padding: 1.5mm 3mm;
-            border-radius: 1.5mm;
+            padding: 0.5mm 3mm;
+            border-radius: 1.2mm;
             align-items: stretch; 
             direction: rtl; 
         }
@@ -192,9 +198,9 @@
         .info-item {
             display: flex;
             flex-direction: column;
-            gap: 0.5mm;
+            gap: 0mm;
             text-align: left;
-            justify-content: flex-end; /* Align contents to bottom */
+            justify-content: center; /* Center contents vertically */
             height: 100%;
         }
 
@@ -211,15 +217,18 @@
 
         .info-item label {
             color: #7a6fb0;
-            font-size: 7.5pt;
+            font-size: 7pt;
             font-weight: bold;
             text-transform: uppercase;
+            direction: ltr; /* Fix colon position for English labels */
+            display: inline-block;
         }
 
         .info-item span {
             color: #32267d;
             font-weight: 800;
             font-size: 9.5pt;
+            unicode-bidi: isolate; /* Help html2canvas with Arabic text */
         }
 
         /* Table Styling */
@@ -243,7 +252,7 @@
 
             /* ↓ مسافة من أعلى منطقة الطباعة إلى بداية الجدول
                MOVE TABLE DOWN: زد هذا الرقم لتنزيل الجدول */
-            margin-top: 1mm;
+            margin-top: 0mm;
         }
 
         .invoice-table thead th {
@@ -319,13 +328,14 @@
             /* وصف الصنف - يأخذ الباقي تلقائياً */
             width: auto;
             text-align: right;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            direction: rtl;
+            white-space: normal;
+            word-break: break-word;
         }
 
         /* Summary Grid (Horizontal) — بلوك الأرصدة */
         .summary-grid {
-            margin-top: 5mm;
+            margin-top: 1mm;
             display: grid;
             grid-template-columns: 1fr 1fr 1fr 1fr 1.2fr;
             border: 1px solid #32267d;
@@ -335,11 +345,11 @@
 
         .summary-cell {
             border-left: 1px solid #b0a8d8;
-            padding: 1.5mm 1mm;
+            padding: 0.8mm 1mm;
             text-align: center;
             display: flex;
             flex-direction: column;
-            gap: 1mm;
+            gap: 0.2mm;
             justify-content: center;
             align-items: center;
         }
@@ -362,7 +372,7 @@
             gap: 1.5mm;
             color: #32267d;
             border-bottom: 0.5px solid #b0a8d8;
-            padding-bottom: 1mm;
+            padding-bottom: 0.2mm;
             width: 100%;
             justify-content: center;
         }
@@ -518,7 +528,7 @@
 
                 <!-- Notes Section -->
                 <div class="notes-container"
-                    style="display: none; margin-top: 4mm; border: 1px solid #32267d; border-radius: 1mm; padding: 2mm; background: #f3f1fb; font-size: 9pt;">
+                    style="display: none; margin-top: 1mm; border: 1px solid #32267d; border-radius: 1mm; padding: 2mm; background: #f3f1fb; font-size: 9pt;">
                     <div style="font-weight: bold; color: #32267d; margin-bottom: 1mm;">الملاحظات / Notes:</div>
                     <div class="data-notes" style="color: #32267d; white-space: pre-wrap;"></div>
                 </div>
@@ -554,7 +564,7 @@
                         </div>
                         <span class="summary-value data-net">0</span>
                     </div>
-                    <div class="total-in-words data-words"></div>
+
                 </div>
             </div>
         </div>
@@ -621,7 +631,7 @@
 
                 // Fill Footer (only on last page)
                 if (i === totalPages - 1) {
-                    page.querySelector('.data-words').textContent = data.totals.words;
+
                     page.querySelector('.data-net').textContent = Number(data.totals.net).toLocaleString() + ' ' + currencySymbol;
                     if (page.querySelector('.data-subtotal')) {
                         page.querySelector('.data-subtotal').textContent = Number(data.totals.subtotal).toLocaleString() + ' ' + currencySymbol;
@@ -700,17 +710,13 @@
             if (params.get('autoprint') === '1') {
                 setTimeout(() => printOnly(), 600);
             } else if (params.get('autodownload') === '1') {
-                setTimeout(() => downloadAsPDF(), 800);
+                setTimeout(() => downloadAsImage(), 800);
             }
         });
 
-        // === TRUE PDF DOWNLOAD using html2canvas + jsPDF ===
-        // Background is embedded as Base64 in CSS → no HTTP request → always works from first download
-        async function downloadAsPDF() {
-            const { jsPDF } = window.jspdf;
+        // === TRUE IMAGE DOWNLOAD using html2canvas ===
+        async function downloadAsImage() {
             const pages = document.querySelectorAll('.page-container');
-            const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
             document.body.classList.add('download-mode');
 
             // Small delay to let browser repaint with download-mode styles
@@ -718,21 +724,32 @@
 
             for (let i = 0; i < pages.length; i++) {
                 const canvas = await html2canvas(pages[i], {
-                    scale: 3,
+                    scale: 3, // High resolution
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
                     backgroundColor: '#ffffff',
                     scrollX: 0,
-                    scrollY: 0
+                    scrollY: 0,
+                    onclone: (clonedDoc) => {
+                        // Fix for html2canvas RTL issues: 
+                        // Force direction on all Arabic-containing elements in the clone
+                        const rtlElements = clonedDoc.querySelectorAll('.data-customer, .data-items td, .data-words, .data-notes');
+                        rtlElements.forEach(el => {
+                            el.style.direction = 'rtl';
+                            el.style.textAlign = 'right';
+                        });
+                    }
                 });
-                const imgData = canvas.toDataURL('image/jpeg', 1.0);
-                if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+                
+                const link = document.createElement('a');
+                const pageSuffix = pages.length > 1 ? `_Page_${i+1}` : '';
+                link.download = `{{ $formattedId }}${pageSuffix}.png`;
+                link.href = canvas.toDataURL('image/png', 1.0);
+                link.click();
             }
 
             document.body.classList.remove('download-mode');
-            pdf.save('{{ $formattedId }}.pdf');
         }
     </script>
 </body>

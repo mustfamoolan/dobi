@@ -1201,12 +1201,12 @@ new class extends Component {
                             display: grid;
                             grid-template-columns: 1fr 1fr 1.5fr;
                             gap: 2mm;
-                            margin-bottom: 2mm;
+                            margin-bottom: 0.5mm;
                             color: #32267d;
                             border: 1px solid #b0a8d8;
                             background: #f3f1fb;
-                            padding: 1.5mm 3mm;
-                            border-radius: 1.5mm;
+                            padding: 0.5mm 3mm;
+                            border-radius: 1.2mm;
                             align-items: stretch;
                             direction: rtl;
                         }
@@ -1225,9 +1225,9 @@ new class extends Component {
                         .preview-info-item {
                             display: flex;
                             flex-direction: column;
-                            gap: 0.5mm;
+                            gap: 0mm;
                             text-align: left;
-                            justify-content: flex-end;
+                            justify-content: center;
                             height: 100%;
                         }
 
@@ -1244,9 +1244,11 @@ new class extends Component {
 
                         .preview-info-item label {
                             color: #7a6fb0;
-                            font-size: 7.5pt;
+                            font-size: 7pt;
                             font-weight: bold;
                             text-transform: uppercase;
+                            direction: ltr;
+                            display: inline-block;
                         }
 
                         .preview-info-item span {
@@ -1259,7 +1261,7 @@ new class extends Component {
                             width: 100%;
                             border-collapse: collapse;
                             table-layout: fixed;
-                            margin-top: 1mm;
+                            margin-top: 0mm;
                             direction: rtl;
                         }
 
@@ -1299,7 +1301,7 @@ new class extends Component {
                         .preview-col-total { width: 32mm; }
 
                         .preview-summary-grid {
-                            margin-top: 5mm;
+                            margin-top: 1mm;
                             display: grid;
                             grid-template-columns: 1fr 1fr 1fr 1fr 1.2fr;
                             border: 1px solid #32267d;
@@ -1309,11 +1311,11 @@ new class extends Component {
 
                         .preview-summary-cell {
                             border-left: 1px solid #b0a8d8;
-                            padding: 1.5mm 1mm;
+                            padding: 0.8mm 1mm;
                             text-align: center;
                             display: flex;
                             flex-direction: column;
-                            gap: 1mm;
+                            gap: 0.2mm;
                             justify-content: center;
                             align-items: center;
                         }
@@ -1336,7 +1338,7 @@ new class extends Component {
                             gap: 1.5mm;
                             color: #32267d;
                             border-bottom: 0.5px solid #b0a8d8;
-                            padding-bottom: 1mm;
+                            padding-bottom: 0.2mm;
                             width: 100%;
                             justify-content: center;
                         }
@@ -1373,7 +1375,7 @@ new class extends Component {
                         }
 
                         .preview-notes-container {
-                            margin-top: 4mm;
+                            margin-top: 1mm;
                             border: 1px solid #32267d;
                             border-radius: 1mm;
                             padding: 2mm;
@@ -1485,9 +1487,7 @@ new class extends Component {
                                             </div>
                                             <span class="preview-summary-value">{{ number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
-                                        <div class="preview-total-in-words">
-                                            {{ \App\Services\ArabicAmountToWords::translate($viewingSale->grand_total, $viewingSale->currency) }}
-                                        </div>
+
                                     </div>
                                 </div>
                             </div>
