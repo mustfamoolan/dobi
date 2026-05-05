@@ -149,6 +149,10 @@ new class extends Component {
 
             if ($this->affect_ledger) {
                 if ($this->account_type === 'customer') {
+                    $customer = Customer::findOrFail($this->account_id);
+                    $currentBalance = $customer->getCurrentBalance($this->currency);
+                    $newBalance = $currentBalance + ($this->type === 'payment' ? $this->amount : -$this->amount);
+
                     CustomerLedger::create([
                         'customer_id' => $this->account_id,
                         'date' => $this->date,
@@ -158,12 +162,16 @@ new class extends Component {
                         'exchange_rate' => $this->exchange_rate,
                         'debit' => $this->type === 'payment' ? $this->amount : 0,
                         'credit' => $this->type === 'receipt' ? $this->amount : 0,
-                        'balance' => 0,
+                        'balance' => $newBalance,
                         'ref_type' => 'voucher',
                         'ref_id' => $voucher->id,
                         'created_by' => Auth::id(),
                     ]);
                 } elseif ($this->account_type === 'supplier') {
+                    $supplier = Supplier::findOrFail($this->account_id);
+                    $currentBalance = $supplier->getCurrentBalance($this->currency);
+                    $newBalance = $currentBalance + ($this->type === 'payment' ? -$this->amount : $this->amount);
+
                     SupplierLedger::create([
                         'supplier_id' => $this->account_id,
                         'date' => $this->date,
@@ -173,12 +181,18 @@ new class extends Component {
                         'exchange_rate' => $this->exchange_rate,
                         'debit' => $this->type === 'payment' ? $this->amount : 0,
                         'credit' => $this->type === 'receipt' ? $this->amount : 0,
-                        'balance' => 0,
+                        'balance' => $newBalance,
                         'ref_type' => 'voucher',
                         'ref_id' => $voucher->id,
                         'created_by' => Auth::id(),
                     ]);
                 } elseif ($this->account_type === 'employee') {
+                    $employee = Employee::findOrFail($this->account_id);
+                    $currentBalance = $employee->getCurrentBalance($this->currency);
+                    // For employees, Credit is usually commission (they are owed), Debit is payment (they receive).
+                    // Receipt from employee = repayment (credit). Payment to employee = payment (debit).
+                    $newBalance = $currentBalance + ($this->type === 'payment' ? -$this->amount : $this->amount);
+
                     EmployeeLedger::create([
                         'employee_id' => $this->account_id,
                         'date' => $this->date,
@@ -188,7 +202,7 @@ new class extends Component {
                         'exchange_rate' => $this->exchange_rate,
                         'debit' => $this->type === 'payment' ? $this->amount : 0,
                         'credit' => $this->type === 'receipt' ? $this->amount : 0,
-                        'balance' => 0,
+                        'balance' => $newBalance,
                         'ref_type' => 'voucher',
                         'ref_id' => $voucher->id,
                         'created_by' => Auth::id(),

@@ -23,6 +23,14 @@ class Employee extends Model
         return $this->hasMany(EmployeeLedger::class);
     }
 
+    public function getCurrentBalance($currency = 'IQD')
+    {
+        return EmployeeLedger::where('employee_id', $this->id)
+            ->where('currency', $currency)
+            ->selectRaw('SUM(credit) - SUM(debit) as balance')
+            ->first()->balance ?? 0;
+    }
+
     public function sales()
     {
         return $this->hasMany(Sale::class);

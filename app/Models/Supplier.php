@@ -18,6 +18,14 @@ class Supplier extends Model
         return $this->hasMany(SupplierLedger::class);
     }
 
+    public function getCurrentBalance($currency = 'IQD')
+    {
+        return SupplierLedger::where('supplier_id', $this->id)
+            ->where('currency', $currency)
+            ->selectRaw('SUM(credit) - SUM(debit) as balance')
+            ->first()->balance ?? 0;
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
