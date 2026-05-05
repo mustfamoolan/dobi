@@ -47,7 +47,8 @@
             'net' => $model->grand_total,
             'paid' => $type === 'sale' ? $model->paidAmount() : (($model->payment_status === 'paid') ? $model->grand_total : 0),
             'previous' => $previousBalance,
-            'total_balance' => $previousBalance + ($type === 'sale' ? $model->remainingAmount() : (($model->payment_status === 'paid') ? 0 : $model->grand_total)),
+            'total_due' => $previousBalance + $model->grand_total,
+            'total_balance' => $previousBalance + ($model->grand_total - ($type === 'sale' ? $model->paidAmount() : (($model->payment_status === 'paid') ? $model->grand_total : 0))),
             'remaining' => $type === 'sale' ? $model->remainingAmount() : (($model->payment_status === 'paid') ? 0 : $model->grand_total),
             'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total, $model->currency),
             'notes' => $model->notes
@@ -564,7 +565,6 @@
                         </div>
                         <span class="summary-value data-net">0</span>
                     </div>
-
                 </div>
             </div>
         </div>

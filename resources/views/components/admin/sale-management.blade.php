@@ -39,6 +39,7 @@ new class extends Component {
     public $notes;
     public $payment_status = 'pending';
     public $discount = 0;
+    public $paid_amount = 0; // Amount paid during creation
     public $financial_account_id;
     public $items = []; // [{product_id, name, qty, price, subtotal}]
     public $viewingSale = null;
@@ -76,7 +77,7 @@ new class extends Component {
 
     public function openCreateModal()
     {
-        $this->reset(['customer_id', 'warehouse_id', 'employee_id', 'items', 'notes', 'selected_product_id', 'item_qty', 'item_price', 'payment_status', 'discount', 'editingId']);
+        $this->reset(['customer_id', 'warehouse_id', 'employee_id', 'items', 'notes', 'selected_product_id', 'item_qty', 'item_price', 'payment_status', 'discount', 'paid_amount', 'editingId']);
         $this->date = now()->format('Y-m-d');
         // Default to first warehouse
         $this->warehouse_id = Warehouse::first()->id ?? null;
@@ -277,7 +278,8 @@ new class extends Component {
             'items.*.qty' => 'required|numeric|min:0.001',
             'items.*.price' => 'required|numeric|min:0',
             'discount' => 'required|numeric|min:0',
-            'financial_account_id' => 'required_if:payment_status,paid',
+            'paid_amount' => 'required|numeric|min:0',
+            'financial_account_id' => 'required_if:paid_amount,>0',
         ], [
             'items.*.qty.required' => __('Quantity is required for all items.'),
             'items.*.price.required' => __('Price is required for all items.'),
@@ -387,7 +389,11 @@ new class extends Component {
             }
 
             if ($isInvoice) {
+                $customer = Customer::findOrFail($this->customer_id);
+                $currentBalance = $customer->getCurrentBalance($this->currency);
+
                 // 3. Create Customer Ledger Entry (Debit = they owe us money)
+                $newBalance = $currentBalance + $this->grandTotal;
                 CustomerLedger::create([
                     'customer_id' => $this->customer_id,
                     'date' => $this->date,
@@ -397,11 +403,12 @@ new class extends Component {
                     'exchange_rate' => $this->exchange_rate,
                     'debit' => $this->grandTotal,
                     'credit' => 0,
-                    'balance' => $this->grandTotal,
+                    'balance' => $newBalance,
                     'ref_type' => 'sale',
                     'ref_id' => $sale->id,
                     'created_by' => Auth::id(),
                 ]);
+                $currentBalance = $newBalance;
 
                 // 4. Create Employee Commission Entry (if applicable)
                 if ($this->employee_id) {
@@ -426,16 +433,16 @@ new class extends Component {
                     }
                 }
 
-                // 5. If Paid, record in Treasury and credit customer
-                if ($this->payment_status === 'paid') {
+                // 5. If there is a payment, record in Treasury and credit customer
+                if ($this->paid_amount > 0) {
                     $account = \App\Models\FinancialAccount::findOrFail($this->financial_account_id);
-                    $treasuryAmount = $this->grandTotal;
+                    $treasuryAmount = $this->paid_amount;
 
                     // Record in Treasury
                     \App\Models\AccountLedger::create([
                         'account_id' => $this->financial_account_id,
                         'date' => $this->date,
-                        'description' => __('Cash Sale') . ' #' . $sale->id . ' (' . $sale->customer->name . ')',
+                        'description' => __('Payment for Sale') . ' #' . $sale->id . ' (' . $sale->customer->name . ')',
                         'debit' => $treasuryAmount,
                         'credit' => 0,
                         'balance' => $account->current_balance + $treasuryAmount,
@@ -445,7 +452,8 @@ new class extends Component {
                     ]);
                     $account->increment('current_balance', $treasuryAmount);
 
-                    // Credit Customer (to cancel the debit from the sale)
+                    // Credit Customer (to reduce the debt)
+                    $newBalance = $currentBalance - $this->paid_amount;
                     CustomerLedger::create([
                         'customer_id' => $this->customer_id,
                         'date' => $this->date,
@@ -454,17 +462,20 @@ new class extends Component {
                         'currency' => $this->currency,
                         'exchange_rate' => $this->exchange_rate,
                         'debit' => 0,
-                        'credit' => $this->grandTotal,
-                        'balance' => 0,
+                        'credit' => $this->paid_amount,
+                        'balance' => $newBalance,
                         'ref_type' => 'sale',
                         'ref_id' => $sale->id,
                         'created_by' => Auth::id(),
                     ]);
+                    
+                    // Update sale status based on payment
+                    $sale->updatePaymentStatus();
                 }
-            } elseif ($this->type === 'proforma' && $this->payment_status === 'paid') {
+            } elseif ($this->type === 'proforma' && $this->paid_amount > 0) {
                 // Handle Proforma payment (Credit customer, Debit Treasury)
                 $account = \App\Models\FinancialAccount::findOrFail($this->financial_account_id);
-                $treasuryAmount = $this->grandTotal;
+                $treasuryAmount = $this->paid_amount;
 
                 // 1. Record in Treasury
                 \App\Models\AccountLedger::create([
@@ -489,8 +500,8 @@ new class extends Component {
                     'currency' => $this->currency,
                     'exchange_rate' => $this->exchange_rate,
                     'debit' => 0,
-                    'credit' => $this->grandTotal,
-                    'balance' => -$this->grandTotal,
+                    'credit' => $this->paid_amount,
+                    'balance' => -$this->paid_amount,
                     'ref_type' => 'sale',
                     'ref_id' => $sale->id,
                     'created_by' => Auth::id(),
@@ -716,6 +727,8 @@ new class extends Component {
                 'subtotal' => $item->subtotal,
             ];
         }
+        
+        $this->paid_amount = $sale->paidAmount();
         
         $this->dispatch('open-sale-modal');
     }
@@ -997,15 +1010,20 @@ new class extends Component {
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">{{ __('Payment Status') }}</label>
-                                <select wire:model.live="payment_status" class="form-select">
+                                <select wire:model.live="payment_status" class="form-select" @change="$wire.paid_amount = ($event.target.value === 'paid' ? $wire.grandTotal : 0)">
                                     <option value="pending">{{ __('pending') }}</option>
                                     <option value="paid">{{ __('paid') }}</option>
                                 </select>
                             </div>
-                            @if($payment_status === 'paid')
+                            <div class="col-md-3">
+                                <label class="form-label">{{ __('Paid Amount') }}</label>
+                                <input type="number" step="{{ $currency === 'USD' ? '0.01' : '1' }}" wire:model.live="paid_amount" class="form-control">
+                            </div>
+                            @if($paid_amount > 0)
                             <div class="col-md-3">
                                 <label class="form-label">{{ __('Deposit to Treasury') }}</label>
                                 <select wire:model="financial_account_id" class="form-select @error('financial_account_id') is-invalid @enderror">
+                                    <option value="">{{ __('Select Treasury') }}</option>
                                     @foreach(\App\Models\FinancialAccount::where('is_active', true)->get() as $fa)
                                         <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
                                     @endforeach
@@ -1461,7 +1479,7 @@ new class extends Component {
                                             <div class="preview-summary-label-row">
                                                 <span class="preview-summary-label">الرصيد الحالي</span>
                                             </div>
-                                            <span class="preview-summary-value">{{ number_format($viewingPreviousBalance + $viewingSale->remainingAmount(), $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                            <span class="preview-summary-value">{{ number_format($viewingPreviousBalance + ($viewingSale->grand_total - $viewingSale->paidAmount()), $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-summary-cell">
                                             <div class="preview-summary-label-row">
@@ -1487,7 +1505,6 @@ new class extends Component {
                                             </div>
                                             <span class="preview-summary-value">{{ number_format($viewingSale->grand_total, $viewingSale->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
-
                                     </div>
                                 </div>
                             </div>
