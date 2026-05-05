@@ -114,6 +114,23 @@ new class extends Component {
         }
     }
 
+    public function updatedPaymentStatus($value)
+    {
+        $this->syncPaidAmount();
+    }
+
+    protected function syncPaidAmount()
+    {
+        if ($this->payment_status === 'paid') {
+            $this->paid_amount = $this->grand_total;
+        }
+    }
+
+    public function updatedDiscount()
+    {
+        $this->syncPaidAmount();
+    }
+
     public function updatedExchangeRate()
     {
         if ($this->selected_product_id) {
@@ -192,6 +209,7 @@ new class extends Component {
             }
 
             $this->items[$index]['subtotal'] = $qty * $price;
+            $this->syncPaidAmount();
         }
     }
 
@@ -234,6 +252,7 @@ new class extends Component {
                 $this->items[$index]['qty'] += $this->item_qty;
                 $this->items[$index]['subtotal'] = $this->items[$index]['qty'] * $this->items[$index]['price'];
                 $this->reset(['selected_product_id', 'item_qty', 'item_price']);
+                $this->syncPaidAmount();
                 return;
             }
         }
@@ -247,12 +266,14 @@ new class extends Component {
         ];
 
         $this->reset(['selected_product_id', 'item_qty', 'item_price']);
+        $this->syncPaidAmount();
     }
 
     public function removeItem($index)
     {
         unset($this->items[$index]);
         $this->items = array_values($this->items);
+        $this->syncPaidAmount();
     }
 
     public function getTotalProperty()
@@ -335,7 +356,7 @@ new class extends Component {
                 'exchange_rate' => $this->exchange_rate,
                 'total' => $total,
                 'discount' => $this->discount,
-                'grand_total' => $this->grandTotal,
+                'grand_total' => $this->grand_total,
                 'type' => $this->type,
                 'payment_status' => $this->payment_status,
                 'notes' => $this->notes,
@@ -393,7 +414,7 @@ new class extends Component {
                 $currentBalance = $customer->getCurrentBalance($this->currency);
 
                 // 3. Create Customer Ledger Entry (Debit = they owe us money)
-                $newBalance = $currentBalance + $this->grandTotal;
+                $newBalance = $currentBalance + $this->grand_total;
                 CustomerLedger::create([
                     'customer_id' => $this->customer_id,
                     'date' => $this->date,
@@ -401,7 +422,7 @@ new class extends Component {
                     'description' => 'Sale Invoice #' . $sale->id,
                     'currency' => $this->currency,
                     'exchange_rate' => $this->exchange_rate,
-                    'debit' => $this->grandTotal,
+                    'debit' => $this->grand_total,
                     'credit' => 0,
                     'balance' => $newBalance,
                     'ref_type' => 'sale',
@@ -414,7 +435,7 @@ new class extends Component {
                 if ($this->employee_id) {
                     $employee = Employee::find($this->employee_id);
                     if ($employee && $employee->commission_rate > 0) {
-                        $commissionAmount = $this->grandTotal * ($employee->commission_rate / 100);
+                        $commissionAmount = $this->grand_total * ($employee->commission_rate / 100);
 
                         EmployeeLedger::create([
                             'employee_id' => $this->employee_id,
@@ -1010,7 +1031,7 @@ new class extends Component {
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">{{ __('Payment Status') }}</label>
-                                <select wire:model.live="payment_status" class="form-select" @change="$wire.paid_amount = ($event.target.value === 'paid' ? $wire.grandTotal : 0)">
+                                <select wire:model.live="payment_status" class="form-select">
                                     <option value="pending">{{ __('pending') }}</option>
                                     <option value="paid">{{ __('paid') }}</option>
                                 </select>
@@ -1123,7 +1144,7 @@ new class extends Component {
                                     </tr>
                                     <tr class="table-primary">
                                         <th colspan="3" class="text-end">{{ __('Grand Total') }}</th>
-                                        <th class="text-end text-primary fs-16">{{ number_format($this->grandTotal, $currency === 'USD' ? 2 : 0) }}</th>
+                                        <th class="text-end text-primary fs-16">{{ number_format($this->grand_total, $currency === 'USD' ? 2 : 0) }}</th>
                                         <th></th>
                                     </tr>
                                 </tfoot>
