@@ -28,7 +28,8 @@ new class extends Component {
     {
         $product = Product::findOrFail($this->productId);
 
-        $query = StockMovement::where('product_id', $this->productId)
+        $query = StockMovement::with(['creator', 'warehouse'])
+            ->where('product_id', $this->productId)
             ->whereBetween('created_at', [$this->fromDate . ' 00:00:00', $this->toDate . ' 23:59:59'])
             ->orderBy('created_at', 'asc');
 
@@ -69,16 +70,18 @@ new class extends Component {
                         <tr>
                             <th>{{ __('Date') }}</th>
                             <th>{{ __('Type') }}</th>
+                            <th>{{ __('Warehouse') }}</th>
                             <th>{{ __('Reference') }}</th>
                             <th>{{ __('Qty In (+)') }}</th>
                             <th>{{ __('Qty Out (-)') }}</th>
                             <th>{{ __('Balance') }}</th>
+                            <th>{{ __('Operator') }}</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr class="table-info">
-                            <td colspan="5"><strong>{{ __('Balance Forward') }}</strong></td>
-                            <td colspan="1"><strong>{{ number_format($balanceForward, 0) }}</strong></td>
+                            <td colspan="6"><strong>{{ __('Balance Forward') }}</strong></td>
+                            <td colspan="2"><strong>{{ number_format($balanceForward, 0) }}</strong></td>
                         </tr>
                         @php $runningBalance = $balanceForward; @endphp
                         @foreach($movements as $movement)
@@ -93,17 +96,24 @@ new class extends Component {
                                         {{ __($movement->ref_type) }}
                                     </span>
                                 </td>
-                                <td>{{ $movement->note }}</td>
+                                <td>{{ $movement->warehouse->name ?? '---' }}</td>
+                                <td>
+                                    @if($movement->ref_id)
+                                        <span class="text-primary small">[{{ $movement->ref_id }}]</span>
+                                    @endif
+                                    {{ $movement->note }}
+                                </td>
                                 <td class="text-success">{{ $movement->qty_in > 0 ? '+' . number_format($movement->qty_in, 0) : '-' }}</td>
                                 <td class="text-danger">{{ $movement->qty_out > 0 ? '-' . number_format($movement->qty_out, 0) : '-' }}</td>
                                 <td><strong>{{ number_format($runningBalance, 0) }}</strong></td>
+                                <td>{{ $movement->creator->name ?? '---' }}</td>
                             </tr>
                         @endforeach
                     </tbody>
                     <tfoot class="table-light">
                         <tr>
-                            <th colspan="5" class="text-end">{{ __('Current Stock') }}</th>
-                            <th>{{ number_format($runningBalance, 0) }} {{ $product->unit }}</th>
+                            <th colspan="6" class="text-end">{{ __('Current Stock') }}</th>
+                            <th colspan="2">{{ number_format($runningBalance, 0) }} {{ $product->unit }}</th>
                         </tr>
                     </tfoot>
                 </table>
@@ -114,3 +124,4 @@ new class extends Component {
         </div>
     </div>
 </div>
+
