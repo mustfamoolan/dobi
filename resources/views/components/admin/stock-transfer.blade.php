@@ -66,6 +66,20 @@ new class extends Component {
                 'note' => $this->note ?? __('Transfer from ') . $fromWarehouse->name,
                 'created_by' => Auth::id(),
             ]);
+
+            // Log activity
+            \App\Services\ActivityLogger::log(
+                'transferred',
+                __('Transferred :qty :unit of :product from :from to :to', [
+                    'qty' => $this->qty,
+                    'unit' => $product->unit,
+                    'product' => $product->name,
+                    'from' => $fromWarehouse->name,
+                    'to' => $toWarehouse->name
+                ]),
+                $product,
+                ['ref_id' => $refId]
+            );
         });
 
         $this->reset(['productId', 'fromWarehouseId', 'toWarehouseId', 'qty', 'note']);

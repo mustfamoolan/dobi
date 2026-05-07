@@ -136,6 +136,12 @@
         </a>
     </li>
     <li class="slide">
+        <a href="{{ route('admin.activity-log.index') }}" class="side-menu__item" role="menuitem">
+            <span class="side_menu_icon"><i class="ri-history-line"></i></span>
+            <span class="side-menu__label">{{ __('Activity Log') }}</span>
+        </a>
+    </li>
+    <li class="slide">
         <a href="{{ route('admin.settings.index') }}" class="side-menu__item" role="menuitem">
             <span class="side_menu_icon"><i class="ri-settings-3-line"></i></span>
             <span class="side-menu__label">{{ __('Settings') }}</span>

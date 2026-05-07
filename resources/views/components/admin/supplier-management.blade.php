@@ -61,11 +61,14 @@ new class extends Component {
         ];
 
         if ($this->isEditMode) {
-            Supplier::findOrFail($this->supplierId)->update($data);
+            $supplier = Supplier::findOrFail($this->supplierId);
+            $supplier->update($data);
+            \App\Services\ActivityLogger::log('updated', __('Updated supplier: :name', ['name' => $supplier->name]), $supplier);
             session()->flash('success', __('Supplier updated successfully.'));
         } else {
             $data['created_by'] = Auth::id();
             $supplier = Supplier::create($data);
+            \App\Services\ActivityLogger::log('created', __('Created supplier: :name', ['name' => $supplier->name]), $supplier);
 
             // Create Opening Balance Entry in Ledger (if table exists/after migrate)
             try {
@@ -95,11 +98,13 @@ new class extends Component {
     public function delete($id)
     {
         $supplier = Supplier::findOrFail($id);
+        $name = $supplier->name;
         if ($supplier->purchases()->count() > 0) {
             session()->flash('error', __('Cannot delete supplier with existing purchase records.'));
             return;
         }
         $supplier->delete();
+        \App\Services\ActivityLogger::log('deleted', __('Deleted supplier: :name', ['name' => $name]));
         session()->flash('success', __('Supplier deleted successfully.'));
     }
 

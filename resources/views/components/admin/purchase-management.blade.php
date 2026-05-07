@@ -271,6 +271,15 @@ new class extends Component {
                 ]);
             }
 
+            \App\Services\ActivityLogger::log(
+                $this->editingId ? 'updated' : 'purchase_created',
+                __('Purchase Invoice #:id from :supplier', [
+                    'id' => $purchase->id,
+                    'supplier' => $purchase->supplier->name
+                ]),
+                $purchase
+            );
+
             DB::commit();
             session()->flash('success', 'Purchase invoice ' . ($this->editingId ? 'updated' : 'created') . ' successfully.');
             $this->dispatch('close-purchase-modal');
@@ -364,6 +373,16 @@ new class extends Component {
                 $purchase->update(['payment_status' => 'paid']);
             }
 
+            \App\Services\ActivityLogger::log(
+                'updated',
+                __('Recorded payment of :amount :currency for Purchase #:id', [
+                    'amount' => $this->paymentAmount,
+                    'currency' => $purchase->currency,
+                    'id' => $purchase->id
+                ]),
+                $purchase
+            );
+
             DB::commit();
             session()->flash('success', __('Payment recorded successfully.'));
             $this->dispatch('close-payment-modal');
@@ -424,6 +443,15 @@ new class extends Component {
 
         DB::transaction(function () use ($id) {
             $purchase = Purchase::findOrFail($id);
+
+            \App\Services\ActivityLogger::log(
+                'deleted',
+                __('Deleted Purchase #:id from :supplier', [
+                    'id' => $purchase->id,
+                    'supplier' => $purchase->supplier->name
+                ])
+            );
+
             $this->revertPurchase($purchase);
             $purchase->items()->delete();
             $purchase->delete();

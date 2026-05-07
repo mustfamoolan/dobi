@@ -528,6 +528,15 @@ new class extends Component {
                     'created_by' => Auth::id(),
                 ]);
             }
+            \App\Services\ActivityLogger::log(
+                $this->editingId ? 'updated' : 'invoice_created',
+                __(':type #:id for :customer', [
+                    'type' => ucfirst($this->type),
+                    'id' => $sale->id,
+                    'customer' => $sale->customer->name
+                ]),
+                $sale
+            );
         });
 
         session()->flash('success', ucfirst($this->type) . ($this->editingId ? ' updated ' : ' created ') . 'successfully.');
@@ -628,6 +637,16 @@ new class extends Component {
                 $sale->update(['payment_status' => 'paid']);
             }
 
+            \App\Services\ActivityLogger::log(
+                'updated',
+                __('Recorded payment of :amount :currency for Sale #:id', [
+                    'amount' => $this->paymentAmount,
+                    'currency' => $sale->currency,
+                    'id' => $sale->id
+                ]),
+                $sale
+            );
+
             DB::commit();
             session()->flash('success', __('Payment recorded successfully.'));
             $this->dispatch('close-payment-modal');
@@ -705,6 +724,14 @@ new class extends Component {
                 }
             }
         });
+        \App\Services\ActivityLogger::log(
+            'updated',
+            __('Converted :type #:id to Invoice', [
+                'type' => ucfirst($sale->type),
+                'id' => $sale->id
+            ]),
+            $sale
+        );
 
         session()->flash('success', 'Converted to Invoice successfully.');
         $this->dispatch('close-confirm-convert-modal');
@@ -767,6 +794,16 @@ new class extends Component {
 
         DB::transaction(function () use ($id) {
             $sale = Sale::findOrFail($id);
+            
+            \App\Services\ActivityLogger::log(
+                'deleted',
+                __('Deleted :type #:id for :customer', [
+                    'type' => ucfirst($sale->type),
+                    'id' => $sale->id,
+                    'customer' => $sale->customer->name
+                ])
+            );
+
             $this->revertSale($sale);
             $sale->items()->delete();
             $sale->delete();

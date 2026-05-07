@@ -144,5 +144,9 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         return view('admin.voucher-print', ['id' => $id]);
     })->name('vouchers.print');
 
+    Route::get('/activity-log', function () {
+        return view('admin.activity-log');
+    })->name('activity-log.index');
+
     Route::get('/{page}', [DashboardController::class, 'index'])->where('page', '[A-Za-z0-9\-]+')->name('dashboard');
 });

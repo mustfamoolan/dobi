@@ -85,6 +85,20 @@ new class extends Component {
             'created_by' => Auth::id(),
         ]);
 
+        $product = Product::find($this->adj_product_id);
+        $warehouse = \App\Models\Warehouse::find($this->adj_warehouse_id);
+
+        \App\Services\ActivityLogger::log(
+            'updated',
+            __('Adjusted stock for :product in :warehouse (:type :qty)', [
+                'product' => $product->name,
+                'warehouse' => $warehouse->name,
+                'type' => $this->adj_type == 'in' ? '+' : '-',
+                'qty' => $this->adj_qty
+            ]),
+            $product
+        );
+
         session()->flash('success', __('Stock adjusted successfully.'));
         $this->dispatch('close-adjustment-modal');
         $this->reset(['adj_product_id', 'adj_warehouse_id', 'adj_qty', 'adj_type', 'adj_note', 'adj_current_stock']);
@@ -139,7 +153,11 @@ new class extends Component {
         ];
 
         if ($this->isEditMode) {
-            Product::findOrFail($this->productId)->update($data);
+            $product = Product::findOrFail($this->productId);
+            $product->update($data);
+
+            \App\Services\ActivityLogger::log('updated', __('Updated product: :name', ['name' => $product->name]), $product);
+            
             session()->flash('success', __('Product updated successfully.'));
         } else {
             $data['created_by'] = Auth::id();
@@ -156,6 +174,9 @@ new class extends Component {
                     'created_by' => Auth::id(),
                 ]);
             }
+
+            \App\Services\ActivityLogger::log('created', __('Created new product: :name', ['name' => $product->name]), $product);
+
             session()->flash('success', __('Product created successfully.'));
         }
 
@@ -165,12 +186,18 @@ new class extends Component {
     public function delete($id)
     {
         $product = Product::findOrFail($id);
+        $name = $product->name;
+
         // Check for dependencies (sales, etc) - for now just stock movements beyond opening
         if ($product->stockMovements()->where('ref_type', '!=', 'opening')->count() > 0) {
             session()->flash('error', __('Cannot delete product with existing transactions.'));
             return;
         }
+
         $product->delete();
+        
+        \App\Services\ActivityLogger::log('deleted', __('Deleted product: :name', ['name' => $name]));
+
         session()->flash('success', __('Product deleted successfully.'));
     }
 

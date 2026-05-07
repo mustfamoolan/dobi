@@ -65,11 +65,14 @@ new class extends Component {
         }
 
         if ($this->isEditMode) {
-            User::findOrFail($this->userId)->update($data);
+            $user = User::findOrFail($this->userId);
+            $user->update($data);
+            \App\Services\ActivityLogger::log('updated', __('Updated system user: :name', ['name' => $user->name]), $user);
             session()->flash('success', __('User updated successfully.'));
         } else {
             $data['created_by'] = Auth::id();
-            User::create($data);
+            $user = User::create($data);
+            \App\Services\ActivityLogger::log('created', __('Created system user: :name', ['name' => $user->name]), $user);
             session()->flash('success', __('User created successfully.'));
         }
 
@@ -82,7 +85,10 @@ new class extends Component {
             session()->flash('error', __('You cannot delete yourself.'));
             return;
         }
-        User::findOrFail($id)->delete();
+        $user = User::findOrFail($id);
+        $name = $user->name;
+        $user->delete();
+        \App\Services\ActivityLogger::log('deleted', __('Deleted system user: :name', ['name' => $name]));
         session()->flash('success', __('User deleted successfully.'));
     }
 

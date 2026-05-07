@@ -47,11 +47,14 @@ new class extends Component {
         ];
 
         if ($this->isEditMode) {
-            Category::findOrFail($this->categoryId)->update($data);
+            $category = Category::findOrFail($this->categoryId);
+            $category->update($data);
+            \App\Services\ActivityLogger::log('updated', __('Updated category: :name', ['name' => $category->name]), $category);
             session()->flash('success', __('Category updated successfully.'));
         } else {
             $data['created_by'] = Auth::id();
-            Category::create($data);
+            $category = Category::create($data);
+            \App\Services\ActivityLogger::log('created', __('Created category: :name', ['name' => $category->name]), $category);
             session()->flash('success', __('Category created successfully.'));
         }
 
@@ -61,11 +64,13 @@ new class extends Component {
     public function delete($id)
     {
         $category = Category::findOrFail($id);
+        $name = $category->name;
         if ($category->products()->count() > 0) {
             session()->flash('error', __('Cannot delete category with associated products.'));
             return;
         }
         $category->delete();
+        \App\Services\ActivityLogger::log('deleted', __('Deleted category: :name', ['name' => $name]));
         session()->flash('success', __('Category deleted successfully.'));
     }
 

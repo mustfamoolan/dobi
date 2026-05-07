@@ -63,6 +63,8 @@ new class extends Component {
             $customer = Customer::findOrFail($this->customerId);
             $customer->update($data);
             
+            \App\Services\ActivityLogger::log('updated', __('Updated customer: :name', ['name' => $customer->name]), $customer);
+
             // Sync Opening Balance in Ledger (IQD)
             \App\Models\CustomerLedger::updateOrCreate(
                 ['customer_id' => $customer->id, 'type' => 'opening_balance', 'currency' => 'IQD'],
@@ -93,6 +95,8 @@ new class extends Component {
         } else {
             $data['created_by'] = Auth::id();
             $customer = Customer::create($data);
+
+            \App\Services\ActivityLogger::log('created', __('Created customer: :name', ['name' => $customer->name]), $customer);
 
             // Create Opening Balance Entry in Ledger (IQD)
             if ($this->opening_balance_iqd != 0) {
@@ -132,7 +136,10 @@ new class extends Component {
 
     public function delete($id)
     {
-        Customer::findOrFail($id)->delete();
+        $customer = Customer::findOrFail($id);
+        $name = $customer->name;
+        $customer->delete();
+        \App\Services\ActivityLogger::log('deleted', __('Deleted customer: :name', ['name' => $name]));
         session()->flash('success', __('Customer deleted successfully.'));
     }
 

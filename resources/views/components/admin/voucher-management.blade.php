@@ -242,6 +242,18 @@ new class extends Component {
                 }
             }
 
+            \App\Services\ActivityLogger::log(
+                $this->type === 'receipt' ? 'receipt_voucher' : 'payment_voucher',
+                __(':type Voucher #:id of :amount :currency for :destination', [
+                    'type' => ucfirst($this->type),
+                    'id' => $voucher->id,
+                    'amount' => $this->amount,
+                    'currency' => $this->currency,
+                    'destination' => $destinationLabel
+                ]),
+                $voucher
+            );
+
             return $voucher;
         });
 

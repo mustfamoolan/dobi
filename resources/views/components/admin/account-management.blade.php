@@ -62,8 +62,7 @@ new class extends Component {
                     'is_active' => $this->is_active,
                 ]);
 
-                // Opening balance update logic is complex, for simplicity we only allow it on creation
-                // and view it as read-only or handled via adjustments.
+                \App\Services\ActivityLogger::log('updated', __('Updated financial account: :name', ['name' => $account->name]), $account);
                 session()->flash('success', __('Account updated successfully.'));
             } else {
                 $account = FinancialAccount::create([
@@ -75,6 +74,8 @@ new class extends Component {
                     'is_active' => $this->is_active,
                     'created_by' => Auth::id(),
                 ]);
+
+                \App\Services\ActivityLogger::log('created', __('Created financial account: :name', ['name' => $account->name]), $account);
 
                 if ($this->opening_balance != 0) {
                     AccountLedger::create([
@@ -99,6 +100,7 @@ new class extends Component {
     public function delete($id)
     {
         $account = FinancialAccount::findOrFail($id);
+        $name = $account->name;
 
         // Check if account has transactions beyond opening
         if ($account->ledgerEntries()->where('ref_type', '!=', 'opening')->count() > 0) {
@@ -107,6 +109,7 @@ new class extends Component {
         }
 
         $account->delete();
+        \App\Services\ActivityLogger::log('deleted', __('Deleted financial account: :name', ['name' => $name]));
         session()->flash('success', __('Account deleted successfully.'));
     }
 

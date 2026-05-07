@@ -58,10 +58,13 @@ new class extends Component {
         ];
 
         if ($this->isEditMode) {
-            Warehouse::findOrFail($this->warehouseId)->update($data);
+            $warehouse = Warehouse::findOrFail($this->warehouseId);
+            $warehouse->update($data);
+            \App\Services\ActivityLogger::log('updated', __('Updated warehouse: :name', ['name' => $warehouse->name]), $warehouse);
             session()->flash('success', __('Warehouse updated successfully.'));
         } else {
-            Warehouse::create($data + ['is_active' => true]);
+            $warehouse = Warehouse::create($data + ['is_active' => true]);
+            \App\Services\ActivityLogger::log('created', __('Created warehouse: :name', ['name' => $warehouse->name]), $warehouse);
             session()->flash('success', __('Warehouse created successfully.'));
         }
 
@@ -71,6 +74,7 @@ new class extends Component {
     public function delete($id)
     {
         $warehouse = Warehouse::findOrFail($id);
+        $name = $warehouse->name;
 
         // Prevent deleting if it has stock movements
         if ($warehouse->stockMovements()->count() > 0) {
@@ -79,6 +83,7 @@ new class extends Component {
         }
 
         $warehouse->delete();
+        \App\Services\ActivityLogger::log('deleted', __('Deleted warehouse: :name', ['name' => $name]));
         session()->flash('success', __('Warehouse deleted successfully.'));
     }
 

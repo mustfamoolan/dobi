@@ -79,9 +79,11 @@ new class extends Component {
         if ($this->employeeId) {
             $employee = Employee::find($this->employeeId);
             $employee->update(array_merge($data, ['updated_by' => Auth::id()]));
+            \App\Services\ActivityLogger::log('updated', __('Updated employee: :name', ['name' => $employee->name]), $employee);
             session()->flash('success', __('Employee updated successfully.'));
         } else {
-            Employee::create(array_merge($data, ['created_by' => Auth::id()]));
+            $employee = Employee::create(array_merge($data, ['created_by' => Auth::id()]));
+            \App\Services\ActivityLogger::log('created', __('Created employee: :name', ['name' => $employee->name]), $employee);
             session()->flash('success', __('Employee created successfully.'));
         }
 
@@ -91,7 +93,10 @@ new class extends Component {
 
     public function delete($id)
     {
-        Employee::destroy($id);
+        $employee = Employee::findOrFail($id);
+        $name = $employee->name;
+        $employee->delete();
+        \App\Services\ActivityLogger::log('deleted', __('Deleted employee: :name', ['name' => $name]));
         session()->flash('success', __('Employee deleted successfully.'));
     }
 
