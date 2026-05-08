@@ -71,7 +71,7 @@ new class extends Component {
                             <th>{{ __('Date') }}</th>
                             <th>{{ __('Type') }}</th>
                             <th>{{ __('Warehouse') }}</th>
-                            <th>{{ __('Reference') }}</th>
+                            <th>{{ __('Note') }}</th>
                             <th>{{ __('Qty In (+)') }}</th>
                             <th>{{ __('Qty Out (-)') }}</th>
                             <th>{{ __('Balance') }}</th>
@@ -97,12 +97,7 @@ new class extends Component {
                                     </span>
                                 </td>
                                 <td>{{ $movement->warehouse->name ?? '---' }}</td>
-                                <td>
-                                    @if($movement->ref_id)
-                                        <span class="text-primary small">[{{ $movement->ref_id }}]</span>
-                                    @endif
-                                    {{ $movement->note }}
-                                </td>
+                                <td>{{ $movement->note }}</td>
                                 <td class="text-success">{{ $movement->qty_in > 0 ? '+' . number_format($movement->qty_in, 0) : '-' }}</td>
                                 <td class="text-danger">{{ $movement->qty_out > 0 ? '-' . number_format($movement->qty_out, 0) : '-' }}</td>
                                 <td><strong>{{ number_format($runningBalance, 0) }}</strong></td>
