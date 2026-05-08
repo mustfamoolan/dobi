@@ -11,11 +11,39 @@ use Illuminate\Support\Str;
 new class extends Component {
     public $productId, $fromWarehouseId, $toWarehouseId, $qty, $note;
     public $products, $warehouses;
+    public $warehouseStocks = [];
 
     public function mount()
     {
         $this->products = Product::where('is_active', true)->get();
         $this->warehouses = Warehouse::where('is_active', true)->get();
+        if ($this->productId) {
+            $this->loadWarehouseStocks();
+        }
+    }
+
+    public function updatedProductId($value)
+    {
+        $this->loadWarehouseStocks();
+    }
+
+    protected function loadWarehouseStocks()
+    {
+        if ($this->productId) {
+            $stocks = StockMovement::query()
+                ->select('warehouse_id')
+                ->selectRaw('SUM(qty_in) - SUM(qty_out) as total')
+                ->where('product_id', $this->productId)
+                ->groupBy('warehouse_id')
+                ->get();
+            
+            $this->warehouseStocks = [];
+            foreach ($stocks as $stock) {
+                $this->warehouseStocks[(int)$stock->warehouse_id] = (float)$stock->total;
+            }
+        } else {
+            $this->warehouseStocks = [];
+        }
     }
 
     public function transfer()
@@ -82,7 +110,7 @@ new class extends Component {
             );
         });
 
-        $this->reset(['productId', 'fromWarehouseId', 'toWarehouseId', 'qty', 'note']);
+        $this->reset(['productId', 'fromWarehouseId', 'toWarehouseId', 'qty', 'note', 'warehouseStocks']);
         session()->flash('success', __('Stock transferred successfully.'));
     }
 
@@ -120,7 +148,7 @@ new class extends Component {
                     <form wire:submit.prevent="transfer">
                         <div class="mb-3">
                             <label class="form-label">{{ __('Select Product') }}</label>
-                            <select wire:model="productId" class="form-select @error('productId') is-invalid @enderror">
+                            <select wire:model.live="productId" class="form-select @error('productId') is-invalid @enderror">
                                 <option value="">-- {{ __('Select Product') }} --</option>
                                 @foreach($products as $product)
                                     <option value="{{ $product->id }}">{{ $product->name }} ({{ $product->unit }})</option>
@@ -135,7 +163,14 @@ new class extends Component {
                                 class="form-select @error('fromWarehouseId') is-invalid @enderror">
                                 <option value="">-- {{ __('Select Warehouse') }} --</option>
                                 @foreach($warehouses as $warehouse)
-                                    <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                    <option value="{{ $warehouse->id }}">
+                                        {{ $warehouse->name }} 
+                                        @if(isset($warehouseStocks[$warehouse->id]))
+                                            ({{ number_format($warehouseStocks[$warehouse->id], 2) }})
+                                        @else
+                                            (0)
+                                        @endif
+                                    </option>
                                 @endforeach
                             </select>
                             @error('fromWarehouseId') <div class="invalid-feedback">{{ $message }}</div> @enderror
@@ -147,7 +182,14 @@ new class extends Component {
                                 class="form-select @error('toWarehouseId') is-invalid @enderror">
                                 <option value="">-- {{ __('Select Warehouse') }} --</option>
                                 @foreach($warehouses as $warehouse)
-                                    <option value="{{ $warehouse->id }}">{{ $warehouse->name }}</option>
+                                    <option value="{{ $warehouse->id }}">
+                                        {{ $warehouse->name }}
+                                        @if(isset($warehouseStocks[$warehouse->id]))
+                                            ({{ number_format($warehouseStocks[$warehouse->id], 2) }})
+                                        @else
+                                            (0)
+                                        @endif
+                                    </option>
                                 @endforeach
                             </select>
                             @error('toWarehouseId') <div class="invalid-feedback">{{ $message }}</div> @enderror
