@@ -228,7 +228,6 @@ new class extends Component {
                             <thead class="table-light">
                                 <tr>
                                     <th>{{ __('Date') }}</th>
-                                    <th>{{ __('Ref ID') }}</th>
                                     <th>{{ __('Product') }}</th>
                                     <th>{{ __('Warehouse') }}</th>
                                     <th>{{ __('Type') }}</th>
@@ -240,7 +239,6 @@ new class extends Component {
                                 @forelse($this->recentTransfers as $movement)
                                     <tr>
                                         <td>{{ $movement->created_at->format('Y-m-d H:i') }}</td>
-                                        <td><span class="text-primary fw-medium">{{ $movement->ref_id }}</span></td>
                                         <td>{{ $movement->product->name }}</td>
                                         <td>{{ $movement->warehouse->name }}</td>
                                         <td>
