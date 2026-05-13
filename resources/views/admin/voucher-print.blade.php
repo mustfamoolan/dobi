@@ -2,210 +2,253 @@
     $voucher = \App\Models\Voucher::findOrFail($id);
     $setting = \App\Models\AppSetting::first();
     $account = $voucher->account;
+    
+    // Process logo
+    $logoPath = public_path('assets/images/auth/bg-img-2.png');
+    $logoBase64 = '';
+    if (file_exists($logoPath)) {
+        $mime = mime_content_type($logoPath) ?: 'image/png';
+        $logoBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($logoPath));
+    }
+
+    $amountInWords = \App\Services\ArabicAmountToWords::translate($voucher->amount, $voucher->currency);
+    $voucherTypeLabel = $voucher->type == 'receipt' ? 'إيصال استلام نقدية' : 'إيصال صرف نقدية';
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="{{ app()->getLocale() == 'ar' ? 'rtl' : 'ltr' }}">
+<html lang="ar" dir="rtl">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ __('Voucher') }} #{{ $voucher->id }}</title>
+    <title>{{ $voucherTypeLabel }} #{{ $voucher->id }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        @page {
+            size: A4 portrait;
+            margin: 0;
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Cairo', sans-serif;
+            margin: 0;
+            padding: 0;
             background: #fff;
-            color: #333;
-            margin: 0;
-            padding: 20px;
-        }
-
-        .voucher-box {
-            max-width: 700px;
-            margin: auto;
-            border: 2px solid #333;
-            padding: 40px;
-            border-radius: 8px;
-            position: relative;
-        }
-
-        .voucher-box::after {
-            content: "";
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            right: 10px;
-            bottom: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            pointer-events: none;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 20px;
-        }
-
-        .header h1 {
-            margin: 0;
-            color: #333;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-
-        .voucher-type {
-            display: inline-block;
-            background: #333;
-            color: #fff;
-            padding: 5px 20px;
-            border-radius: 20px;
-            margin-top: 10px;
-            font-weight: bold;
-        }
-
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .field {
-            margin-bottom: 15px;
-            border-bottom: 1px dotted #ccc;
-            padding-bottom: 5px;
-        }
-
-        .label {
-            font-weight: bold;
-            color: #666;
-            font-size: 14px;
-            display: block;
-            margin-bottom: 5px;
-        }
-
-        .value {
-            font-size: 18px;
             color: #000;
         }
 
-        .amount-section {
-            background: #f9f9f9;
-            padding: 20px;
-            border-radius: 4px;
-            text-align: center;
-            margin: 30px 0;
-            border: 1px solid #eee;
+        .page-wrapper {
+            width: 210mm;
+            height: 297mm;
+            display: flex;
+            flex-direction: column;
         }
 
-        .amount-box {
-            display: inline-block;
-            border: 2px solid #333;
-            padding: 10px 30px;
-            font-size: 24px;
-            font-weight: bold;
-            margin-top: 10px;
+        .voucher-wrapper {
+            height: 50%;
+            width: 100%;
+            padding: 15mm;
+            box-sizing: border-box;
+            position: relative;
+            border-bottom: 1px dashed #ccc; /* Cut line */
         }
 
-        .footer {
+        .voucher-wrapper:last-child {
+            border-bottom: none;
+        }
+
+        .voucher-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .header-top {
             display: flex;
             justify-content: space-between;
-            margin-top: 60px;
+            align-items: flex-start;
+            margin-bottom: 5mm;
         }
 
-        .signature-box {
+        .company-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo-img {
+            height: 40px;
+            width: auto;
+        }
+
+        .company-name {
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .date-section {
+            font-size: 14px;
+        }
+
+        .title-section {
             text-align: center;
-            width: 200px;
+            margin-bottom: 5mm;
         }
 
-        .signature-line {
-            border-top: 1px solid #333;
-            margin-top: 40px;
-            padding-top: 10px;
+        .title-section h1 {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+            border-bottom: 2px solid #000;
+            display: inline-block;
+            padding-bottom: 2px;
+        }
+
+        .voucher-no {
+            display: block;
+            margin-top: 5px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .content-body {
+            margin-top: 5mm;
+        }
+
+        .input-row {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 10mm;
+            width: 100%;
+        }
+
+        .label {
+            font-weight: 600;
+            white-space: nowrap;
+            margin-left: 10px;
+            font-size: 15px;
+        }
+
+        .value-line {
+            flex-grow: 1;
+            border-bottom: 1px solid #999;
+            padding: 0 10px;
+            font-size: 16px;
+            font-weight: 600;
+            min-height: 25px;
+        }
+
+        .footer-section {
+            margin-top: 15mm;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20mm;
+        }
+
+        .sig-box {
+            text-align: center;
+            width: 150px;
+        }
+
+        .sig-label {
+            font-weight: 700;
+            font-size: 16px;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .sig-line {
+            border-top: 1px solid #000;
+            width: 100%;
+            height: 1px;
         }
 
         .print-btn {
-            background: #333;
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: #000;
             color: #fff;
-            padding: 10px 20px;
             border: none;
-            border-radius: 4px;
+            padding: 8px 15px;
+            border-radius: 5px;
             cursor: pointer;
-            margin-bottom: 20px;
+            z-index: 1000;
         }
 
         @media print {
             .print-btn {
                 display: none;
             }
-
-            body {
-                padding: 0;
-            }
-
-            .voucher-box {
-                border: 2px solid #000;
-            }
         }
     </style>
 </head>
 
 <body>
-    <div class="voucher-box">
-        <button class="print-btn" onclick="window.print()">{{ __('Print') }}</button>
+    <button class="print-btn" onclick="window.print()">طباعة</button>
 
-        <div class="header">
-            <h1>{{ $setting->company_name ?? 'AlWaseet Admin' }}</h1>
-            <div class="voucher-type">
-                {{ $voucher->type == 'receipt' ? __('Receipt Voucher') : __('Payment Voucher') }}
-            </div>
-        </div>
-
-        <div class="info-grid">
-            <div class="field">
-                <span class="label">{{ __('Voucher ID') }}</span>
-                <span class="value">#{{ $voucher->id }}</span>
-            </div>
-            <div class="field">
-                <span class="label">{{ __('Date') }}</span>
-                <span class="value">{{ $voucher->date }}</span>
-            </div>
-        </div>
-
-        <div class="field">
-            <span class="label">{{ $voucher->type == 'receipt' ? __('Received From') : __('Paid To') }}</span>
-            <span class="value">
-                {{ $account->name ?? __('General') }}
-            </span>
-        </div>
-
-        <div class="field" style="margin-top: 20px;">
-            <span class="label">{{ __('Notes') }}</span>
-            <span class="value">{{ $voucher->notes }}</span>
-        </div>
-
-        <div class="amount-section">
-            <span class="label">{{ __('Amount') }}</span>
-            <div class="amount-box">
-                {{ number_format($voucher->amount, $voucher->currency === 'USD' ? 2 : 0) }} {{ $voucher->currency }}
-            </div>
-            @if($voucher->currency != 'USD')
-                <div style="margin-top: 10px; font-size: 12px; color: #777;">
-                    1 USD = {{ number_format($voucher->exchange_rate, 0) }} {{ $voucher->currency }}
+    <div class="page-wrapper">
+        <div class="voucher-wrapper">
+            <div class="voucher-container">
+                <div class="header-top">
+                    <div class="company-section">
+                        @if($logoBase64)
+                            <img src="{{ $logoBase64 }}" class="logo-img" alt="Logo">
+                        @endif
+                        <span class="company-name">{{ $setting->company_name ?? 'اسم الشركة' }}</span>
+                    </div>
+                    <div class="date-section">
+                        التاريخ: &nbsp;&nbsp; {{ date('Y / m / d', strtotime($voucher->date)) }}
+                    </div>
                 </div>
-            @endif
-        </div>
 
-        <div class="footer">
-            <div class="signature-box">
-                <div class="signature-line">{{ __('Accountant') }}</div>
-            </div>
-            <div class="signature-box">
-                <div class="signature-line">{{ __('Receiver') }}</div>
+                <div class="title-section">
+                    <h1>{{ $voucherTypeLabel }}</h1>
+                    <div class="voucher-no">No. #{{ str_pad($voucher->id, 5, '0', STR_PAD_LEFT) }}</div>
+                </div>
+
+                <div class="content-body">
+                    <div class="input-row">
+                        <span class="label">استلمنا من السيد:</span>
+                        <div class="value-line">{{ $account->name ?? '------------------------------------------------------------' }}</div>
+                    </div>
+
+                    <div class="input-row">
+                        <span class="label">مبلغ وقدره:</span>
+                        <div class="value-line" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>{{ $amountInWords }}</span>
+                            <span style="border: 2px solid #000; padding: 2px 10px; font-weight: 800; background: #eee;">
+                                {{ number_format($voucher->amount, $voucher->currency === 'USD' ? 2 : 0) }} {{ $voucher->currency }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="input-row">
+                        <span class="label">وذلك قيمة:</span>
+                        <div class="value-line">{{ $voucher->notes ?: '------------------------------------------------------------' }}</div>
+                    </div>
+                </div>
+
+                <div class="footer-section">
+                    <div class="sig-box">
+                        <span class="sig-label">الختم</span>
+                    </div>
+                    <div class="sig-box">
+                        <span class="sig-label">المستلم</span>
+                        <div class="sig-line"></div>
+                    </div>
+                </div>
             </div>
         </div>
+        <!-- Bottom half remains empty -->
     </div>
+
+    <script>
+        window.onload = function() {
+            window.print();
+        };
+    </script>
 </body>
 
 </html>

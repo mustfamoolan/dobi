@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    public function index($page)
+    public function index(Request $request, $page)
     {
         $allowedPages = [
             'apps-calendar',
@@ -174,16 +174,87 @@ class DashboardController extends Controller
 
         if (in_array($page, $allowedPages) && view()->exists($page)) {
             if ($page === 'index') {
+                $fromDate = $request->query('from_date');
+                $toDate = $request->query('to_date');
+                $filterType = $request->query('filter', 'all');
+
+                if ($filterType === 'today') {
+                    $fromDate = now()->startOfDay()->format('Y-m-d');
+                    $toDate = now()->endOfDay()->format('Y-m-d');
+                } elseif ($filterType === 'week') {
+                    $fromDate = now()->startOfWeek()->format('Y-m-d');
+                    $toDate = now()->endOfDay()->format('Y-m-d');
+                } elseif ($filterType === 'month') {
+                    $fromDate = now()->startOfMonth()->format('Y-m-d');
+                    $toDate = now()->endOfDay()->format('Y-m-d');
+                } elseif ($filterType === 'year') {
+                    $fromDate = now()->startOfYear()->format('Y-m-d');
+                    $toDate = now()->endOfDay()->format('Y-m-d');
+                }
+
+                $salesQuery = \App\Models\Sale::query();
+                $purchasesQuery = \App\Models\Purchase::query();
+                $vouchersQuery = \App\Models\Voucher::query();
+                $customerLedgerQuery = \App\Models\CustomerLedger::query();
+                $supplierLedgerQuery = \App\Models\SupplierLedger::query();
+
+                if ($fromDate && $toDate) {
+                    $salesQuery->whereBetween('date', [$fromDate, $toDate]);
+                    $purchasesQuery->whereBetween('date', [$fromDate, $toDate]);
+                    $vouchersQuery->whereBetween('date', [$fromDate, $toDate]);
+                    $customerLedgerQuery->whereBetween('date', [$fromDate, $toDate]);
+                    $supplierLedgerQuery->whereBetween('date', [$fromDate, $toDate]);
+                }
+
+                $todayDate = now()->format('Y-m-d');
+                // Receivables (What customers owe us) - Cumulative up to toDate
+                $recQuery = \App\Models\CustomerLedger::query();
+                if ($toDate) {
+                    $recQuery->where('date', '<=', $toDate);
+                }
+                $total_receivables_iqd = (clone $recQuery)->where('currency', 'IQD')->selectRaw('SUM(debit) - SUM(credit) as balance')->first()->balance ?? 0;
+                $total_receivables_usd = (clone $recQuery)->where('currency', 'USD')->selectRaw('SUM(debit) - SUM(credit) as balance')->first()->balance ?? 0;
+                
+                // Payables (What we owe suppliers) - Cumulative up to toDate
+                $payQuery = \App\Models\SupplierLedger::query();
+                if ($toDate) {
+                    $payQuery->where('date', '<=', $toDate);
+                }
+                $total_payables_iqd = (clone $payQuery)->where('currency', 'IQD')->selectRaw('SUM(credit) - SUM(debit) as balance')->first()->balance ?? 0;
+                $total_payables_usd = (clone $payQuery)->where('currency', 'USD')->selectRaw('SUM(credit) - SUM(debit) as balance')->first()->balance ?? 0;
+
                 $stats = [
-                    'total_sales' => \App\Models\Sale::sum('grand_total'),
-                    'total_purchases' => \App\Models\Purchase::sum('grand_total'),
+                    'total_sales_iqd' => (clone $salesQuery)->where('currency', 'IQD')->sum('grand_total'),
+                    'total_sales_usd' => (clone $salesQuery)->where('currency', 'USD')->sum('grand_total'),
+                    'total_purchases_iqd' => (clone $purchasesQuery)->where('currency', 'IQD')->sum('grand_total'),
+                    'total_purchases_usd' => (clone $purchasesQuery)->where('currency', 'USD')->sum('grand_total'),
                     'customers_count' => \App\Models\Customer::count(),
                     'products_count' => \App\Models\Product::count(),
-                    'recent_sales' => \App\Models\Sale::with('customer')->latest()->take(5)->get(),
+                    'recent_sales' => (clone $salesQuery)->with('customer')->latest()->take(5)->get(),
+                    'recent_vouchers' => (clone $vouchersQuery)->latest()->take(5)->get(),
                     'treasury_total' => \App\Models\FinancialAccount::where('is_active', true)->where(function($q) {
                         $q->where('currency', 'IQD')->orWhereNull('currency');
                     })->sum('current_balance'),
                     'treasury_total_usd' => \App\Models\FinancialAccount::where('is_active', true)->where('currency', 'USD')->sum('current_balance'),
+                    
+                    'total_receivables_iqd' => $total_receivables_iqd,
+                    'total_receivables_usd' => $total_receivables_usd,
+                    'total_payables_iqd' => $total_payables_iqd,
+                    'total_payables_usd' => $total_payables_usd,
+                    
+                    // Sales Today
+                    'sales_today' => \App\Models\Sale::where('date', $todayDate)->sum('grand_total'),
+                    
+                    // Quick Activity
+                    'low_stock_products' => \App\Models\Product::whereHas('stockMovements', function($q) {
+                        $q->select('product_id')
+                          ->groupBy('product_id')
+                          ->havingRaw('SUM(qty_in) - SUM(qty_out) <= 5');
+                    })->count(),
+                    
+                    'fromDate' => $fromDate,
+                    'toDate' => $toDate,
+                    'filterType' => $filterType,
                 ];
                 return view($page, $stats);
             }

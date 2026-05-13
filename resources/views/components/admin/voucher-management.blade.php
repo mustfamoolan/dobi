@@ -356,10 +356,10 @@ new class extends Component {
                                 </td>
                                 <td>{{ $voucher->notes }}</td>
                                 <td class="text-end">
-                                    <a href="{{ route('admin.vouchers.print', $voucher->id) }}" target="_blank"
+                                    <button onclick="printVoucher('{{ route('admin.vouchers.print', $voucher->id) }}')"
                                         class="btn btn-sm btn-soft-primary" title="{{ __('Print') }}">
                                         <i class="ri-printer-line"></i>
-                                    </a>
+                                    </button>
                                 </td>
                             </tr>
                         @endforeach
@@ -497,5 +497,16 @@ new class extends Component {
                 if (modal) modal.hide();
             });
         });
+
+        function printVoucher(url) {
+            let iframe = document.getElementById('print-iframe');
+            if (!iframe) {
+                iframe = document.createElement('iframe');
+                iframe.id = 'print-iframe';
+                iframe.style.display = 'none';
+                document.body.appendChild(iframe);
+            }
+            iframe.src = url;
+        }
     </script>
 </div>
