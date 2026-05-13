@@ -59,6 +59,10 @@ new class extends Component {
     public $selected_product_id;
     public $item_qty = 1;
     public $item_price = 0;
+    public $last_customer_price = null;
+    public $last_other_price = null;
+    public $last_customer_currency = '';
+    public $last_other_currency = '';
 
     protected $paginationTheme = 'bootstrap';
 
@@ -77,7 +81,12 @@ new class extends Component {
 
     public function openCreateModal()
     {
-        $this->reset(['customer_id', 'warehouse_id', 'employee_id', 'items', 'notes', 'selected_product_id', 'item_qty', 'item_price', 'payment_status', 'discount', 'paid_amount', 'editingId']);
+        $this->reset([
+            'customer_id', 'warehouse_id', 'employee_id', 'items', 'notes', 
+            'selected_product_id', 'item_qty', 'item_price', 
+            'last_customer_price', 'last_other_price', 'last_customer_currency', 'last_other_currency',
+            'payment_status', 'discount', 'paid_amount', 'editingId'
+        ]);
         $this->date = now()->format('Y-m-d');
         // Default to first warehouse
         $this->warehouse_id = Warehouse::first()->id ?? null;
@@ -85,6 +94,13 @@ new class extends Component {
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
         $this->financial_account_id = \App\Models\FinancialAccount::where('is_active', true)->first()?->id;
         $this->dispatch('open-sale-modal');
+    }
+
+    public function updatedCustomerId()
+    {
+        if ($this->selected_product_id) {
+            $this->updatedSelectedProductId($this->selected_product_id);
+        }
     }
 
     public function updatedSelectedProductId($id)
@@ -103,6 +119,44 @@ new class extends Component {
             } elseif ($this->currency === 'IQD' && $product_currency === 'USD') {
                 $this->item_price = round($product_price * $this->exchange_rate, 0);
             }
+
+            // Fetch last price for this customer
+            if ($this->customer_id) {
+                $lastCustItem = SaleItem::where('product_id', $id)
+                    ->whereHas('sale', function($q) {
+                        $q->where('customer_id', $this->customer_id)->where('type', 'invoice');
+                    })
+                    ->with('sale')
+                    ->latest()
+                    ->first();
+                
+                if ($lastCustItem) {
+                    $this->last_customer_price = $lastCustItem->price;
+                    $this->last_customer_currency = $lastCustItem->sale->currency;
+                } else {
+                    $this->last_customer_price = null;
+                }
+            }
+
+            // Fetch last price for others
+            $lastOtherItem = SaleItem::where('product_id', $id)
+                ->whereHas('sale', function($q) {
+                    $q->where('customer_id', '!=', $this->customer_id)->where('type', 'invoice');
+                })
+                ->with('sale')
+                ->latest()
+                ->first();
+            
+            if ($lastOtherItem) {
+                $this->last_other_price = $lastOtherItem->price;
+                $this->last_other_currency = $lastOtherItem->sale->currency;
+            } else {
+                $this->last_other_price = null;
+            }
+        } else {
+            $this->item_price = 0;
+            $this->last_customer_price = null;
+            $this->last_other_price = null;
         }
     }
 
@@ -1108,6 +1162,20 @@ new class extends Component {
                                                 </option>
                                             @endforeach
                                         </select>
+                                        @if($last_customer_price !== null || $last_other_price !== null)
+                                            <div class="mt-1 d-flex gap-2 flex-wrap">
+                                                @if($last_customer_price !== null)
+                                                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                                        {{ __('Last Customer Price') }}: {{ number_format($last_customer_price, $last_customer_currency == 'USD' ? 2 : 0) }} {{ $last_customer_currency }}
+                                                    </span>
+                                                @endif
+                                                @if($last_other_price !== null)
+                                                    <span class="badge bg-info-subtle text-info border border-info-subtle">
+                                                        {{ __('Last Price (Others)') }}: {{ number_format($last_other_price, $last_other_currency == 'USD' ? 2 : 0) }} {{ $last_other_currency }}
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        @endif
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">{{ __('Qty') }}</label>
