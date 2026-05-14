@@ -208,20 +208,28 @@ class DashboardController extends Controller
 
                 $todayDate = now()->format('Y-m-d');
                 // Receivables (What customers owe us) - Cumulative up to toDate
-                $recQuery = \App\Models\CustomerLedger::query();
-                if ($toDate) {
-                    $recQuery->where('date', '<=', $toDate);
-                }
-                $total_receivables_iqd = (clone $recQuery)->where('currency', 'IQD')->selectRaw('SUM(debit) - SUM(credit) as balance')->first()->balance ?? 0;
-                $total_receivables_usd = (clone $recQuery)->where('currency', 'USD')->selectRaw('SUM(debit) - SUM(credit) as balance')->first()->balance ?? 0;
+                // Refined Debt Calculations
+                $customerBalances = \App\Models\CustomerLedger::query()
+                    ->when($toDate, fn($q) => $q->where('date', '<=', $toDate))
+                    ->selectRaw('customer_id, currency, SUM(debit) - SUM(credit) as balance')
+                    ->groupBy('customer_id', 'currency')
+                    ->get();
+
+                $total_receivables_iqd = $customerBalances->where('currency', 'IQD')->where('balance', '>', 0)->sum('balance');
+                $total_receivables_usd = $customerBalances->where('currency', 'USD')->where('balance', '>', 0)->sum('balance');
+
+                $total_customer_credits_iqd = abs($customerBalances->where('currency', 'IQD')->where('balance', '<', 0)->sum('balance'));
+                $total_customer_credits_usd = abs($customerBalances->where('currency', 'USD')->where('balance', '<', 0)->sum('balance'));
                 
-                // Payables (What we owe suppliers) - Cumulative up to toDate
-                $payQuery = \App\Models\SupplierLedger::query();
-                if ($toDate) {
-                    $payQuery->where('date', '<=', $toDate);
-                }
-                $total_payables_iqd = (clone $payQuery)->where('currency', 'IQD')->selectRaw('SUM(credit) - SUM(debit) as balance')->first()->balance ?? 0;
-                $total_payables_usd = (clone $payQuery)->where('currency', 'USD')->selectRaw('SUM(credit) - SUM(debit) as balance')->first()->balance ?? 0;
+                // Payables (What we owe suppliers)
+                $supplierBalances = \App\Models\SupplierLedger::query()
+                    ->when($toDate, fn($q) => $q->where('date', '<=', $toDate))
+                    ->selectRaw('supplier_id, currency, SUM(credit) - SUM(debit) as balance')
+                    ->groupBy('supplier_id', 'currency')
+                    ->get();
+
+                $total_payables_iqd = $supplierBalances->where('currency', 'IQD')->where('balance', '>', 0)->sum('balance');
+                $total_payables_usd = $supplierBalances->where('currency', 'USD')->where('balance', '>', 0)->sum('balance');
 
                 $stats = [
                     'total_sales_iqd' => (clone $salesQuery)->where('currency', 'IQD')->sum('grand_total'),
@@ -241,6 +249,8 @@ class DashboardController extends Controller
                     'total_receivables_usd' => $total_receivables_usd,
                     'total_payables_iqd' => $total_payables_iqd,
                     'total_payables_usd' => $total_payables_usd,
+                    'total_customer_credits_iqd' => $total_customer_credits_iqd,
+                    'total_customer_credits_usd' => $total_customer_credits_usd,
                     
                     // Sales Today
                     'sales_today' => \App\Models\Sale::where('date', $todayDate)->sum('grand_total'),

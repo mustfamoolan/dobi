@@ -13,6 +13,25 @@
 
     $amountInWords = \App\Services\ArabicAmountToWords::translate($voucher->amount, $voucher->currency);
     $voucherTypeLabel = $voucher->type == 'receipt' ? 'إيصال استلام نقدية' : 'إيصال صرف نقدية';
+
+    $customerBalanceInfo = null;
+    if ($voucher->account_type === 'customer' && $account) {
+        $ledgerEntry = \App\Models\CustomerLedger::where('ref_type', 'voucher')
+            ->where('ref_id', $voucher->id)
+            ->first();
+            
+        if ($ledgerEntry) {
+            $remaining = $ledgerEntry->balance;
+            $paid = $voucher->amount;
+            $total = ($voucher->type === 'receipt') ? $remaining + $paid : $remaining - $paid;
+            
+            $customerBalanceInfo = [
+                'total' => $total,
+                'paid' => $paid,
+                'remaining' => $remaining
+            ];
+        }
+    }
 @endphp
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -228,6 +247,23 @@
                         <span class="label">وذلك قيمة:</span>
                         <div class="value-line">{{ $voucher->notes ?: '------------------------------------------------------------' }}</div>
                     </div>
+
+                    @if($customerBalanceInfo)
+                        <div style="margin-top: 10px; border: 1px solid #000; border-radius: 4px; overflow: hidden;">
+                            <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 14px;">
+                                <tr style="background: #f5f5f5;">
+                                    <th style="border: 1px solid #000; padding: 4px;">الرصيد الكلي</th>
+                                    <th style="border: 1px solid #000; padding: 4px;">المبلغ المدفوع</th>
+                                    <th style="border: 1px solid #000; padding: 4px;">الرصيد المتبقي</th>
+                                </tr>
+                                <tr>
+                                    <td style="border: 1px solid #000; padding: 6px; font-weight: 700;">{{ number_format($customerBalanceInfo['total'], 0) }} <small>{{ $voucher->currency }}</small></td>
+                                    <td style="border: 1px solid #000; padding: 6px; font-weight: 700;">{{ number_format($customerBalanceInfo['paid'], 0) }} <small>{{ $voucher->currency }}</small></td>
+                                    <td style="border: 1px solid #000; padding: 6px; font-weight: 700;">{{ number_format($customerBalanceInfo['remaining'], 0) }} <small>{{ $voucher->currency }}</small></td>
+                                </tr>
+                            </table>
+                        </div>
+                    @endif
                 </div>
 
                 <div class="footer-section">

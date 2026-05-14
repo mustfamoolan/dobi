@@ -44,7 +44,7 @@
         <div class="row g-3">
             {{-- Sales & Purchases --}}
             <div class="col-xl-6">
-                <div class="card border-0 shadow-sm">
+                <div class="card border-0 shadow-sm h-100">
                     <div class="card-header bg-white border-0 py-3">
                         <h6 class="card-title mb-0 text-muted uppercase fw-bold fs-12">{{ __('Financial Performance') }}</h6>
                     </div>
@@ -71,7 +71,7 @@
 
             {{-- Treasury Balance --}}
             <div class="col-xl-6">
-                <div class="card border-0 shadow-sm bg-primary text-white">
+                <div class="card border-0 shadow-sm bg-primary text-white h-100">
                     <div class="card-header bg-transparent border-0 py-3">
                         <h6 class="card-title mb-0 text-white-50 uppercase fw-bold fs-12">إجمالي أرصدة الصناديق</h6>
                     </div>
@@ -181,10 +181,10 @@
                             <div class="col-md-6">
                                 <div class="p-3 bg-light rounded-3 d-flex justify-content-between align-items-center">
                                     <div>
-                                        <p class="text-muted mb-1 fs-13">ديون الموردين علينا</p>
-                                        <h5 class="mb-0 text-danger fw-bold">{{ number_format($total_payables_iqd, 0) }} IQD</h5>
+                                        <p class="text-muted mb-1 fs-13">ديون عملاء علينا</p>
+                                        <h5 class="mb-0 text-danger fw-bold">{{ number_format($total_customer_credits_iqd, 0) }} IQD</h5>
                                     </div>
-                                    <h5 class="mb-0 text-danger-emphasis opacity-75 fw-bold">${{ number_format($total_payables_usd, 2) }}</h5>
+                                    <h5 class="mb-0 text-danger-emphasis opacity-75 fw-bold">${{ number_format($total_customer_credits_usd, 2) }}</h5>
                                 </div>
                             </div>
                         </div>
