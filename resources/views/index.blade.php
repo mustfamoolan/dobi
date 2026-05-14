@@ -71,22 +71,22 @@
 
             {{-- Treasury Balance --}}
             <div class="col-xl-6">
-                <div class="card border-0 shadow-sm bg-primary text-white h-100">
-                    <div class="card-header bg-transparent border-0 py-3">
-                        <h6 class="card-title mb-0 text-white-50 uppercase fw-bold fs-12">إجمالي أرصدة الصناديق</h6>
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white border-0 py-3">
+                        <h6 class="card-title mb-0 text-muted uppercase fw-bold fs-12">إجمالي أرصدة الصناديق</h6>
                     </div>
                     <div class="card-body pt-0">
                         <div class="row align-items-center">
-                            <div class="col-6 border-end border-white-10">
+                            <div class="col-6 border-end">
                                 <div class="p-2">
-                                    <p class="text-white-50 mb-1 fs-13">العراقي</p>
-                                    <h3 class="mb-0 fw-bold text-white">{{ number_format($treasury_total, 0) }}</h3>
+                                    <p class="text-muted mb-1 fs-13">العراقي</p>
+                                    <h3 class="mb-0 fw-bold text-primary">{{ number_format($treasury_total, 0) }}</h3>
                                 </div>
                             </div>
                             <div class="col-6">
                                 <div class="p-2">
-                                    <p class="text-white-50 mb-1 fs-13">الدولار</p>
-                                    <h3 class="mb-0 fw-bold text-white">${{ number_format($treasury_total_usd, 2) }}</h3>
+                                    <p class="text-muted mb-1 fs-13">الدولار</p>
+                                    <h3 class="mb-0 fw-bold text-dark">${{ number_format($treasury_total_usd, 2) }}</h3>
                                 </div>
                             </div>
                         </div>
