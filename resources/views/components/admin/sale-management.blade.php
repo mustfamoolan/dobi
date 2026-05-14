@@ -510,39 +510,57 @@ new class extends Component {
 
                 // 5. If there is a payment, record in Treasury and credit customer
                 if ($this->paid_amount > 0) {
-                    $account = \App\Models\FinancialAccount::findOrFail($this->financial_account_id);
-                    $treasuryAmount = $this->paid_amount;
+                    $voucherTotal = 0;
+                    $vouchers = \App\Models\Voucher::where('sale_id', $sale->id)->get();
+                    foreach ($vouchers as $v) {
+                        if ($v->currency === $this->currency) {
+                            $voucherTotal += $v->amount;
+                        } else {
+                            if ($this->currency === 'IQD' && $v->currency === 'USD') {
+                                $voucherTotal += $v->amount * $v->exchange_rate;
+                            } elseif ($this->currency === 'USD' && $v->currency === 'IQD') {
+                                $voucherTotal += $v->amount / ($v->exchange_rate ?: 1);
+                            }
+                        }
+                    }
 
-                    // Record in Treasury
-                    \App\Models\AccountLedger::create([
-                        'account_id' => $this->financial_account_id,
-                        'date' => $this->date,
-                        'description' => __('Payment for Sale') . ' #' . $sale->id . ' (' . $sale->customer->name . ')',
-                        'debit' => $treasuryAmount,
-                        'credit' => 0,
-                        'balance' => $account->current_balance + $treasuryAmount,
-                        'ref_type' => 'sale',
-                        'ref_id' => $sale->id,
-                        'created_by' => Auth::id(),
-                    ]);
-                    $account->increment('current_balance', $treasuryAmount);
+                    $directAmount = $this->paid_amount - $voucherTotal;
 
-                    // Credit Customer (to reduce the debt)
-                    $newBalance = $currentBalance - $this->paid_amount;
-                    CustomerLedger::create([
-                        'customer_id' => $this->customer_id,
-                        'date' => $this->date,
-                        'type' => 'payment',
-                        'description' => __('Payment for Sale') . ' #' . $sale->id,
-                        'currency' => $this->currency,
-                        'exchange_rate' => $this->exchange_rate,
-                        'debit' => 0,
-                        'credit' => $this->paid_amount,
-                        'balance' => $newBalance,
-                        'ref_type' => 'sale',
-                        'ref_id' => $sale->id,
-                        'created_by' => Auth::id(),
-                    ]);
+                    if ($directAmount > 0) {
+                        $account = \App\Models\FinancialAccount::findOrFail($this->financial_account_id);
+                        $treasuryAmount = $directAmount;
+
+                        // Record in Treasury
+                        \App\Models\AccountLedger::create([
+                            'account_id' => $this->financial_account_id,
+                            'date' => $this->date,
+                            'description' => __('Payment for Sale') . ' #' . $sale->id . ' (' . $sale->customer->name . ')',
+                            'debit' => $treasuryAmount,
+                            'credit' => 0,
+                            'balance' => $account->current_balance + $treasuryAmount,
+                            'ref_type' => 'sale',
+                            'ref_id' => $sale->id,
+                            'created_by' => Auth::id(),
+                        ]);
+                        $account->increment('current_balance', $treasuryAmount);
+
+                        // Credit Customer (to reduce the debt)
+                        $newBalance = $currentBalance - $directAmount;
+                        CustomerLedger::create([
+                            'customer_id' => $this->customer_id,
+                            'date' => $this->date,
+                            'type' => 'payment',
+                            'description' => __('Payment for Sale') . ' #' . $sale->id,
+                            'currency' => $this->currency,
+                            'exchange_rate' => $this->exchange_rate,
+                            'debit' => 0,
+                            'credit' => $directAmount,
+                            'balance' => $newBalance,
+                            'ref_type' => 'sale',
+                            'ref_id' => $sale->id,
+                            'created_by' => Auth::id(),
+                        ]);
+                    }
                     
                     // Update sale status based on payment
                     $sale->updatePaymentStatus();
@@ -831,6 +849,18 @@ new class extends Component {
         }
         
         $this->paid_amount = $sale->paidAmount();
+        
+        // Find the last used treasury account for this sale to pre-fill the modal
+        $lastPayment = \App\Models\AccountLedger::where('ref_type', 'sale')
+            ->where('ref_id', $id)
+            ->latest()
+            ->first();
+        if ($lastPayment) {
+            $this->financial_account_id = $lastPayment->account_id;
+        } else {
+            // Default to first active account if no previous payment found
+            $this->financial_account_id = \App\Models\FinancialAccount::where('is_active', true)->first()?->id;
+        }
         
         $this->dispatch('open-sale-modal');
     }
