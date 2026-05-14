@@ -172,19 +172,19 @@
                             <div class="col-md-6">
                                 <div class="p-3 bg-light rounded-3 d-flex justify-content-between align-items-center">
                                     <div>
-                                        <p class="text-muted mb-1 fs-13">ديون العملاء لنا</p>
-                                        <h5 class="mb-0 text-primary fw-bold">{{ number_format($total_receivables_iqd, 0) }} IQD</h5>
+                                        <p class="text-muted mb-1 fs-13">ديون العملاء (بالعراقي)</p>
+                                        <h5 class="mb-0 text-primary fw-bold">{{ number_format($total_receivables_iqd, 0) }} <small class="fs-11">IQD</small></h5>
                                     </div>
-                                    <h5 class="mb-0 text-primary-emphasis opacity-75 fw-bold">${{ number_format($total_receivables_usd, 2) }}</h5>
+                                    <i class="ri-money-dollar-circle-line fs-2 text-primary opacity-25"></i>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="p-3 bg-light rounded-3 d-flex justify-content-between align-items-center">
                                     <div>
-                                        <p class="text-muted mb-1 fs-13">ديون عملاء علينا</p>
-                                        <h5 class="mb-0 text-danger fw-bold">{{ number_format($total_customer_credits_iqd, 0) }} IQD</h5>
+                                        <p class="text-muted mb-1 fs-13">ديون العملاء (بالدولار)</p>
+                                        <h5 class="mb-0 text-success fw-bold">${{ number_format($total_receivables_usd, 2) }}</h5>
                                     </div>
-                                    <h5 class="mb-0 text-danger-emphasis opacity-75 fw-bold">${{ number_format($total_customer_credits_usd, 2) }}</h5>
+                                    <i class="ri-coins-line fs-2 text-success opacity-25"></i>
                                 </div>
                             </div>
                         </div>
