@@ -107,7 +107,7 @@ new class extends Component {
 };
 ?>
 
-<div>
+<div wire:poll.5s>
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-3">
             <h5 class="card-title mb-0">{{ __('User Management') }}</h5>
@@ -144,15 +144,21 @@ new class extends Component {
                             <tr>
                                 <td>
                                     <div class="d-flex align-items-center">
-                                        <div class="flex-shrink-0 me-2">
+                                        <div class="flex-shrink-0 me-2 position-relative">
                                             <div class="avatar-sm">
                                                 <div class="avatar-title rounded-circle bg-primary-subtle text-primary">
                                                     {{ substr($user->name, 0, 1) }}
                                                 </div>
                                             </div>
+                                            @if($user->isOnline())
+                                                <span class="position-absolute border border-white h-10px w-10px rounded-circle bg-success end-0 bottom-0" title="{{ __('Active now') }}"></span>
+                                            @else
+                                                <span class="position-absolute border border-white h-10px w-10px rounded-circle bg-secondary end-0 bottom-0" title="{{ $user->lastSeenText() }}"></span>
+                                            @endif
                                         </div>
                                         <div class="flex-grow-1">
                                             <h6 class="fs-14 mb-0">{{ $user->name }}</h6>
+                                            <small class="text-muted fs-11 d-block">{{ $user->lastSeenText() }}</small>
                                         </div>
                                     </div>
                                 </td>

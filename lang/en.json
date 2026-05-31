@@ -293,5 +293,7 @@
     "Sets the page loader visibility: hidden or visible.": "Sets the page loader visibility: hidden or visible.",
     "Loader": "Loader",
     "Disable": "Disable",
-    "Reset Layouts": "Reset Layouts"
+    "Reset Layouts": "Reset Layouts",
+    "Active now": "Active now",
+    "Never active": "Never active"
 }

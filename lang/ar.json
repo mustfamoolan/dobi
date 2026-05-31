@@ -387,5 +387,7 @@
     "Stock per Warehouse": "رصيد كل مخزن",
     "General": "عام",
     "Affect Balance": "تأثير على الرصيد",
-    "Converted to Invoice": "تم التحويل إلى فاتورة"
+    "Converted to Invoice": "تم التحويل إلى فاتورة",
+    "Active now": "نشط الآن",
+    "Never active": "غير نشط سابقاً"
 }

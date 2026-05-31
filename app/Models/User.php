@@ -26,11 +26,30 @@ class User extends Authenticatable
         'role',
         'created_by',
         'updated_by',
+        'last_seen',
     ];
 
     public function isAdmin()
     {
         return $this->role === 'admin';
+    }
+
+    public function isOnline()
+    {
+        return $this->last_seen && $this->last_seen->diffInMinutes(now()) < 2;
+    }
+
+    public function lastSeenText()
+    {
+        if (!$this->last_seen) {
+            return __('Never active');
+        }
+        
+        if ($this->isOnline()) {
+            return __('Active now');
+        }
+        
+        return $this->last_seen->diffForHumans();
     }
 
     public function creator()
@@ -63,6 +82,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'last_seen' => 'datetime',
         ];
     }
 }
