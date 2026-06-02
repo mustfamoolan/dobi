@@ -107,39 +107,41 @@ new class extends Component {
                 <div class="alert alert-danger mt-2">{{ session('error') }}</div>
             @endif
 
-            <div class="table-responsive">
-                <table class="table table-hover align-middle table-nowrap mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>{{ __('Name') }}</th>
-                            <th>{{ __('Products Count') }}</th>
-                            <th>{{ __('Created By') }}</th>
-                            <th>{{ __('Created At') }}</th>
-                            <th class="text-end">{{ __('Action') }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($categories as $category)
-                            <tr>
-                                <td><strong>{{ $category->name }}</strong></td>
-                                <td><span
-                                        class="badge bg-info-subtle text-info">{{ $category->products_count ?? $category->products()->count() }}</span>
-                                </td>
-                                <td>{{ $category->creator->name ?? __('System') }}</td>
-                                <td>{{ $category->created_at->format('Y-m-d') }}</td>
-                                <td class="text-end">
-                                    <a href="{{ route('admin.categories.show', $category->id) }}" class="btn btn-sm btn-soft-primary" title="{{ __('View') }}"><i
-                                            class="ri-eye-line"></i></a>
-                                    <button wire:click="edit({{ $category->id }})" class="btn btn-sm btn-soft-info" title="{{ __('Edit') }}"><i
-                                            class="ri-edit-line"></i></button>
-                                    <button wire:click="delete({{ $category->id }})"
-                                        onclick="return confirm('{{ __('Are you sure?') }}')" class="btn btn-sm btn-soft-danger" title="{{ __('Delete') }}"><i
-                                            class="ri-delete-bin-line"></i></button>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
+            <div class="row g-4">
+                @forelse($categories as $category)
+                    <div class="col-xl-3 col-lg-4 col-sm-6">
+                        <div class="card h-100 shadow-sm hover-shadow border border-light-subtle rounded-4" 
+                             style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;"
+                             onmouseover="this.style.transform='translateY(-5px)'; this.style.boxShadow='0 10px 20px rgba(0,0,0,0.08)';"
+                             onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
+                            <div class="card-body text-center p-4" 
+                                 onclick="window.location.href='{{ route('admin.categories.show', $category->id) }}'">
+                                <div class="avatar-md mx-auto mb-3 bg-primary-subtle text-primary rounded-4 d-flex align-items-center justify-content-center" 
+                                     style="width: 60px; height: 60px;">
+                                    <i class="ri-folder-open-fill fs-2" style="font-size: 2rem !important;"></i>
+                                </div>
+                                <h5 class="fs-16 mb-2 text-dark fw-bold">{{ $category->name }}</h5>
+                                <span class="badge bg-primary-subtle text-primary px-3 py-1 rounded-pill">
+                                    {{ $category->products_count ?? $category->products()->count() }} {{ __('Products') }}
+                                </span>
+                            </div>
+                            <div class="card-footer bg-transparent border-top-0 d-flex justify-content-center gap-2 pb-4">
+                                <button wire:click="edit({{ $category->id }})" class="btn btn-sm btn-soft-info px-3" title="{{ __('Edit') }}">
+                                    <i class="ri-edit-line"></i> {{ __('Edit') }}
+                                </button>
+                                <button wire:click="delete({{ $category->id }})"
+                                    onclick="event.stopPropagation(); return confirm('{{ __('Are you sure?') }}')" class="btn btn-sm btn-soft-danger px-3" title="{{ __('Delete') }}">
+                                    <i class="ri-delete-bin-line"></i> {{ __('Delete') }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                @empty
+                    <div class="col-12 py-5 text-center text-muted">
+                        <i class="ri-folder-warning-line fs-2 mb-2"></i>
+                        <p>{{ __('No categories found.') }}</p>
+                    </div>
+                @endforelse
             </div>
             <div class="mt-4">
                 {{ $categories->links() }}

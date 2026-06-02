@@ -204,7 +204,7 @@ new class extends Component {
     public function render(): mixed
     {
         $products = Product::with('category')
-            ->when($this->filter_category_id, function($q) {
+            ->when($this->filter_category_id && $this->filter_category_id !== 'all', function($q) {
                 $q->where('category_id', $this->filter_category_id);
             })
             ->when($this->filter_warehouse_id, function($q) {
@@ -219,7 +219,7 @@ new class extends Component {
             ->latest()
             ->paginate(10);
 
-        $categories = Category::all();
+        $categories = Category::withCount('products')->get();
 
         return view('components.admin.product-management', [
             'products' => $products,
@@ -232,20 +232,40 @@ new class extends Component {
 <div>
     <div class="card">
         <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-            <h5 class="card-title mb-0">{{ __('Product Management') }}</h5>
+            <div class="d-flex align-items-center">
+                @if(!empty($filter_category_id) || !empty($search))
+                    <button wire:click="$set('filter_category_id', ''); $set('search', '')" class="btn btn-soft-secondary btn-sm me-3 rounded-pill px-3">
+                        <i class="ri-arrow-left-line align-bottom me-1"></i> {{ __('Back to Categories') }}
+                    </button>
+                @endif
+                <h5 class="card-title mb-0 fw-bold">
+                    @if(!empty($filter_category_id))
+                        @if($filter_category_id === 'all')
+                            {{ __('All Products') }}
+                        @else
+                            {{ __('Category') }}: {{ $categories->firstWhere('id', $filter_category_id)?->name }}
+                        @endif
+                    @else
+                        {{ __('Product Management') }}
+                    @endif
+                </h5>
+            </div>
             <div class="d-flex flex-wrap gap-2 align-items-center">
-                <select wire:model.live="filter_category_id" class="form-select form-select-sm" style="width: auto;">
-                    <option value="">{{ __('All Categories') }}</option>
-                    @foreach(\App\Models\Category::all() as $cat)
-                        <option value="{{ $cat->id }}">{{ $cat->name }}</option>
-                    @endforeach
-                </select>
-                <select wire:model.live="filter_warehouse_id" class="form-select form-select-sm" style="width: auto;">
-                    <option value="">{{ __('All Warehouses') }}</option>
-                    @foreach(\App\Models\Warehouse::where('is_active', true)->get() as $wh)
-                        <option value="{{ $wh->id }}">{{ $wh->name }}</option>
-                    @endforeach
-                </select>
+                @if(!empty($filter_category_id) || !empty($search))
+                    <select wire:model.live="filter_category_id" class="form-select form-select-sm" style="width: auto;">
+                        <option value="">{{ __('Select Category') }}</option>
+                        <option value="all">{{ __('All Categories') }}</option>
+                        @foreach($categories as $cat)
+                            <option value="{{ $cat->id }}">{{ $cat->name }}</option>
+                        @endforeach
+                    </select>
+                    <select wire:model.live="filter_warehouse_id" class="form-select form-select-sm" style="width: auto;">
+                        <option value="">{{ __('All Warehouses') }}</option>
+                        @foreach(\App\Models\Warehouse::where('is_active', true)->get() as $wh)
+                            <option value="{{ $wh->id }}">{{ $wh->name }}</option>
+                        @endforeach
+                    </select>
+                @endif
                 <input type="search" wire:model.live="search" class="form-control form-control-sm"
                     placeholder="{{ __('Search Products...') }}" style="width: auto;">
                 <button wire:click="openModal" class="btn btn-primary btn-sm">
@@ -261,77 +281,129 @@ new class extends Component {
                 <div class="alert alert-danger mt-2">{{ session('error') }}</div>
             @endif
 
-            <div class="table-responsive">
-                <table class="table table-hover align-middle table-nowrap mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>{{ __('Product') }}</th>
-                            <th>{{ __('Category') }}</th>
-                            <th>{{ __('Stock') }}</th>
-                            <th>{{ __('Cost') }}</th>
-                            <th>{{ __('Price') }}</th>
-                            <th>{{ __('Status') }}</th>
-                            <th class="text-end">{{ __('Action') }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($products as $product)
+            @if(empty($filter_category_id) && empty($search))
+                <!-- CATEGORIES GRID VIEW -->
+                <div class="row g-4">
+                    <!-- ALL PRODUCTS CARD -->
+                    <div class="col-xl-3 col-lg-4 col-sm-6">
+                        <div class="card h-100 shadow-sm hover-shadow border border-light-subtle rounded-4" 
+                             style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;"
+                             onmouseover="this.style.transform='translateY(-5px)'; this.style.boxShadow='0 10px 20px rgba(0,0,0,0.08)';"
+                             onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
+                             wire:click="$set('filter_category_id', 'all')">
+                            <div class="card-body text-center p-4">
+                                <div class="avatar-md mx-auto mb-3 bg-success-subtle text-success rounded-4 d-flex align-items-center justify-content-center" 
+                                     style="width: 60px; height: 60px;">
+                                    <i class="ri-grid-fill fs-2" style="font-size: 2rem !important;"></i>
+                                </div>
+                                <h5 class="fs-16 mb-2 text-dark fw-bold">{{ __('All Products') }}</h5>
+                                <span class="badge bg-success-subtle text-success px-3 py-1 rounded-pill">
+                                    {{ \App\Models\Product::count() }} {{ __('Products') }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- INDIVIDUAL CATEGORIES CARDS -->
+                    @foreach($categories as $cat)
+                        <div class="col-xl-3 col-lg-4 col-sm-6">
+                            <div class="card h-100 shadow-sm hover-shadow border border-light-subtle rounded-4" 
+                                 style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;"
+                                 onmouseover="this.style.transform='translateY(-5px)'; this.style.boxShadow='0 10px 20px rgba(0,0,0,0.08)';"
+                                 onmouseout="this.style.transform='none'; this.style.boxShadow='none';"
+                                 wire:click="$set('filter_category_id', {{ $cat->id }})">
+                                <div class="card-body text-center p-4">
+                                    <div class="avatar-md mx-auto mb-3 bg-primary-subtle text-primary rounded-4 d-flex align-items-center justify-content-center" 
+                                         style="width: 60px; height: 60px;">
+                                        <i class="ri-folder-open-fill fs-2" style="font-size: 2rem !important;"></i>
+                                    </div>
+                                    <h5 class="fs-16 mb-2 text-dark fw-bold">{{ $cat->name }}</h5>
+                                    <span class="badge bg-primary-subtle text-primary px-3 py-1 rounded-pill">
+                                        {{ $cat->products_count }} {{ __('Products') }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <!-- PRODUCTS TABLE LIST VIEW -->
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle table-nowrap mb-0">
+                        <thead class="table-light">
                             <tr>
-                                <td>
-                                    <div class="d-flex align-items-center">
-                                        <div class="flex-grow-1">
-                                            <h6 class="fs-14 mb-0">{{ $product->name }}</h6>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>{{ $product->category->name }}</td>
-                                <td>
-                                    @php $totalStock = $product->currentStock(); @endphp
-                                    <span
-                                        class="badge {{ $totalStock <= $product->stock_alert ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success' }}">
-                                        {{ number_format($totalStock, 0) }} {{ $product->unit }}
-                                    </span>
-                                    <div class="mt-1">
-                                        @foreach(\App\Models\Warehouse::where('is_active', true)->get() as $wh)
-                                            @php $whStock = $product->currentStock($wh->id); @endphp
-                                            @if($whStock != 0)
-                                                <small class="d-block text-muted" style="font-size: 0.75rem;">
-                                                    {{ $wh->name }}: {{ number_format($whStock, 0) }}
-                                                </small>
-                                            @endif
-                                        @endforeach
-                                    </div>
-                                </td>
-                                <td>{{ number_format($product->cost, $product->currency === 'USD' ? 2 : 0) }} {{ $product->currency }}</td>
-                                <td>{{ number_format($product->price, $product->currency === 'USD' ? 2 : 0) }} {{ $product->currency }}</td>
-                                <td>
-                                    <span class="badge {{ $product->is_active ? 'bg-success' : 'bg-secondary' }}">
-                                        {{ $product->is_active ? __('Active') : __('Inactive') }}
-                                    </span>
-                                </td>
-                                <td class="text-end">
-                                    <a href="{{ route('admin.products.history', $product->id) }}" class="btn btn-sm btn-soft-warning" title="{{ __('Stock History') }}">
-                                        <i class="ri-history-line"></i>
-                                    </a>
-                                    <button wire:click="openAdjustmentModal({{ $product->id }})" class="btn btn-sm btn-soft-primary" title="{{ __('Adjust Stock') }}">
-                                        <i class="ri-settings-4-line"></i>
-                                    </button>
-                                    <button wire:click="edit({{ $product->id }})" class="btn btn-sm btn-soft-info" title="{{ __('Edit') }}"><i
-                                            class="ri-edit-line"></i></button>
-                                    <button wire:click="delete({{ $product->id }})"
-                                        onclick="return confirm('{{ __('Are you sure?') }}')" class="btn btn-sm btn-soft-danger" title="{{ __('Delete') }}"><i
-                                            class="ri-delete-bin-line"></i></button>
-                                </td>
+                                <th>{{ __('Product') }}</th>
+                                <th>{{ __('Category') }}</th>
+                                <th>{{ __('Stock') }}</th>
+                                <th>{{ __('Cost') }}</th>
+                                <th>{{ __('Price') }}</th>
+                                <th>{{ __('Status') }}</th>
+                                <th class="text-end">{{ __('Action') }}</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-            <div class="mt-4">
-                {{ $products->links() }}
-            </div>
-        </div>
-    </div>
+                        </thead>
+                        <tbody>
+                            @forelse($products as $product)
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="flex-grow-1">
+                                                <h6 class="fs-14 mb-0">{{ $product->name }}</h6>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>{{ $product->category->name }}</td>
+                                    <td>
+                                        @php $totalStock = $product->currentStock(); @endphp
+                                        <span
+                                            class="badge {{ $totalStock <= $product->stock_alert ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success' }}">
+                                            {{ number_format($totalStock, 0) }} {{ $product->unit }}
+                                        </span>
+                                        <div class="mt-1">
+                                            @foreach(\App\Models\Warehouse::where('is_active', true)->get() as $wh)
+                                                @php $whStock = $product->currentStock($wh->id); @endphp
+                                                @if($whStock != 0)
+                                                    <small class="d-block text-muted" style="font-size: 0.75rem;">
+                                                        {{ $wh->name }}: {{ number_format($whStock, 0) }}
+                                                    </small>
+                                                @endif
+                                            @endforeach
+                                        </div>
+                                    </td>
+                                    <td>{{ number_format($product->cost, $product->currency === 'USD' ? 2 : 0) }} {{ $product->currency }}</td>
+                                    <td>{{ number_format($product->price, $product->currency === 'USD' ? 2 : 0) }} {{ $product->currency }}</td>
+                                    <td>
+                                        <span class="badge {{ $product->is_active ? 'bg-success' : 'bg-secondary' }}">
+                                            {{ $product->is_active ? __('Active') : __('Inactive') }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <a href="{{ route('admin.products.history', $product->id) }}" class="btn btn-sm btn-soft-warning" title="{{ __('Stock History') }}">
+                                            <i class="ri-history-line"></i>
+                                        </a>
+                                        <button wire:click="openAdjustmentModal({{ $product->id }})" class="btn btn-sm btn-soft-primary" title="{{ __('Adjust Stock') }}">
+                                            <i class="ri-settings-4-line"></i>
+                                        </button>
+                                        <button wire:click="edit({{ $product->id }})" class="btn btn-sm btn-soft-info" title="{{ __('Edit') }}"><i
+                                                class="ri-edit-line"></i></button>
+                                        <button wire:click="delete({{ $product->id }})"
+                                            onclick="return confirm('{{ __('Are you sure?') }}')" class="btn btn-sm btn-soft-danger" title="{{ __('Delete') }}"><i
+                                                class="ri-delete-bin-line"></i></button>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="7" class="text-center py-4 text-muted italic">
+                                        {{ __('No products found.') }}
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4">
+                    {{ $products->links() }}
+                </div>
+            @endif
 
     <!-- Product Modal -->
     <div wire:ignore.self class="modal fade" id="productModal" tabindex="-1" aria-labelledby="productModalLabel"
