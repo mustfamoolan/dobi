@@ -18,6 +18,7 @@
         })();
     </script>
     @include('partials.head-css')
+    <script src="{{ asset('assets/js/app-custom.js') }}?v={{ time() }}"></script>
     @livewireStyles
 </head>
 

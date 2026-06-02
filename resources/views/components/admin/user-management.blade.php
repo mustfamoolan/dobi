@@ -107,7 +107,7 @@ new class extends Component {
 };
 ?>
 
-<div wire:poll.5s>
+<div>
     <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-3">
             <h5 class="card-title mb-0">{{ __('User Management') }}</h5>
@@ -143,22 +143,38 @@ new class extends Component {
                         @foreach($users as $user)
                             <tr>
                                 <td>
-                                    <div class="d-flex align-items-center">
-                                        <div class="flex-shrink-0 me-2 position-relative">
-                                            <div class="avatar-sm">
-                                                <div class="avatar-title rounded-circle bg-primary-subtle text-primary">
-                                                    {{ substr($user->name, 0, 1) }}
-                                                </div>
-                                            </div>
-                                            @if($user->isOnline())
-                                                <span class="position-absolute border border-white h-10px w-10px rounded-circle bg-success end-0 bottom-0" title="{{ __('Active now') }}"></span>
-                                            @else
-                                                <span class="position-absolute border border-white h-10px w-10px rounded-circle bg-secondary end-0 bottom-0" title="{{ $user->lastSeenText() }}"></span>
-                                            @endif
+                                    <div class="d-flex align-items-center gap-3" x-data="{
+                                        isOnline() { return $store.presence && $store.presence.isOnline({{ $user->id }}); },
+                                        getLastSeen() { return $store.presence ? $store.presence.getLastSeenText({{ $user->id }}, '{{ $user->last_seen ? $user->last_seen->toISOString() : '' }}') : '{{ $user->lastSeenText() }}'; }
+                                    }">
+                                        <!-- Pulsing Status Dot -->
+                                        <div class="position-relative d-flex align-items-center justify-content-center">
+                                            <span class="rounded-circle"
+                                                  style="width: 10px; height: 10px; transition: all 0.3s ease;"
+                                                  x-bind:class="isOnline() ? 'bg-success' : 'bg-secondary'">
+                                            </span>
+                                            <!-- Pulse animation (only active when online) -->
+                                            <span class="position-absolute rounded-circle border border-success"
+                                                  style="width: 100%; height: 100%; animation: pulse-ring 2s infinite;"
+                                                  x-show="isOnline()">
+                                            </span>
                                         </div>
-                                        <div class="flex-grow-1">
-                                            <h6 class="fs-14 mb-0">{{ $user->name }}</h6>
-                                            <small class="text-muted fs-11 d-block">{{ $user->lastSeenText() }}</small>
+                                        
+                                        <div class="d-flex flex-column">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="fw-bold fs-14 text-dark">{{ $user->name }}</span>
+                                                @if($user->id === Auth::id())
+                                                    <span class="badge bg-light text-secondary border border-secondary-subtle px-1 py-0" style="font-size: 10px;">You</span>
+                                                @endif
+                                            </div>
+                                            <span class="d-block mt-1" style="font-size: 12px; font-weight: 500;"
+                                                  x-bind:class="isOnline() ? 'text-success' : 'text-secondary'"
+                                                  x-text="isOnline() ? '{{ __('Active now') }}' : getLastSeen()">
+                                                  <!-- Fallback -->
+                                                  <span class="{{ $user->isOnline() ? 'text-success' : 'text-secondary' }}">
+                                                      {{ $user->isOnline() ? __('Active now') : $user->lastSeenText() }}
+                                                  </span>
+                                            </span>
                                         </div>
                                     </div>
                                 </td>
@@ -255,4 +271,11 @@ new class extends Component {
             });
         });
     </script>
+    
+    <style>
+    @keyframes pulse-ring {
+        0% { transform: scale(0.8); opacity: 0.5; }
+        100% { transform: scale(2.5); opacity: 0; }
+    }
+    </style>
 </div>

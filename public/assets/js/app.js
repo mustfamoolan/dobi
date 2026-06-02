@@ -269,33 +269,23 @@ document.addEventListener('DOMContentLoaded', () => {
   function btnLoader() {
     const btnLoader = document.querySelectorAll('.btn-loader');
     btnLoader.forEach(button => {
-      button.addEventListener('click', function (e) {
-        const form = this.closest('form');
-        if (form && !form.checkValidity()) {
-          return;
-        }
+      button.addEventListener('click', function () {
+        const originalText = this.querySelector('.indicator-label').textContent;
+        const loadingText = this.getAttribute('data-loading-text');
 
-        const indicatorLabel = this.querySelector('.indicator-label');
-        if (!indicatorLabel) return;
+        // Show loading indicator and disable button
+        this.classList.add('loading');
+        this.querySelector('.indicator-label').textContent = loadingText;
+        this.disabled = true;
 
-        const originalText = indicatorLabel.textContent;
-        const loadingText = this.getAttribute('data-loading-text') || 'Please Wait...';
-
-        // Use a slight delay to allow the form to actually submit before disabling the button
+        // Simulate an asynchronous operation (e.g., form submission)
         setTimeout(() => {
-          this.classList.add('loading');
-          indicatorLabel.textContent = loadingText;
-          this.disabled = true;
-        }, 0);
+          // Hide loading indicator and reset button
+          this.classList.remove('loading');
+          this.querySelector('.indicator-label').textContent = originalText;
+          this.disabled = false;
 
-        // Optional: If you want to simulate a reset for non-form buttons
-        if (!form) {
-          setTimeout(() => {
-            this.classList.remove('loading');
-            indicatorLabel.textContent = originalText;
-            this.disabled = false;
-          }, 2000);
-        }
+        }, 1500); // Simulated delay of 2 seconds
       });
     });
   }

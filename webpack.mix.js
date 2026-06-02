@@ -36,6 +36,8 @@ mix.copyDirectory(path.join(folder.src_assets, 'js'), path.join(folder.dist_asse
 mix.copyDirectory(path.join(folder.src_assets, 'libs'), path.join(folder.dist_assets, 'libs'));
 mix.copyDirectory(path.join(folder.src_assets, 'json'), path.join(folder.dist_assets, 'json'));
 
+mix.js('resources/js/app.js', 'public/assets/js/app-custom.js');
+
 // Add BrowserSync for live-reloading during development
 mix.browserSync({
     proxy: false,

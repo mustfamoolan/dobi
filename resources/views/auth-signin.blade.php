@@ -82,13 +82,9 @@
                                 </a>
                             </div>
 
-                            <button type="submit" class="btn btn-primary rounded-2 w-100 btn-loader">
+                            <button type="submit" class="btn btn-primary rounded-2 w-100">
                                 <span class="indicator-label">
                                     تسجيل الدخول
-                                </span>
-                                <span class="indicator-progress flex gap-2 justify-content-center w-100">
-                                    <span>جاري التحميل...</span>
-                                    <i class="ri-loader-2-fill"></i>
                                 </span>
                             </button>
 

@@ -71,5 +71,15 @@
     .back-btn-modern i {
         line-height: 1;
     }
+
+    @keyframes pulse-ring {
+        0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(10, 179, 156, 0.7); }
+        70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(10, 179, 156, 0); }
+        100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(10, 179, 156, 0); }
+    }
+
+    .pulse-animation {
+        animation: pulse-ring 2s infinite;
+    }
 </style>
 

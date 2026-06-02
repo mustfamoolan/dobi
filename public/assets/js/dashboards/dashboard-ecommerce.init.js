@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Recent Order datatable initialization
     if (recentOrderTable) {
         const recentOrderTableEl = new DataTable(recentOrderTable, {
-            ajax: '/assets/json/recent-order.json', // JSON source for data
+            ajax: 'assets/json/recent-order.json', // JSON source for data
             columns: [
                 { data: 'order_id' },
                 { data: 'order_id' },               // Order ID Column

@@ -53,5 +53,9 @@ php artisan view:cache
 echo "Bringing application online..."
 php artisan up
 
+# Restart Reverb server to apply code changes
+echo "Restarting Reverb server..."
+php artisan reverb:restart
+
 echo "Deployment completed!"
 

@@ -65,6 +65,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 columns: [
                     { data: 'id' },
                     { data: 'image' },
+                    { data: 'sku' },
                     { data: 'price' },
                     { data: 'category' },
                     { data: 'tags' },
@@ -102,17 +103,23 @@ document.addEventListener("DOMContentLoaded", function () {
                     {
                         targets: 2,
                         render: function (data) {
-                            return `$${data.toFixed(2)}`;
+                            return data;
                         },
                     },
                     {
                         targets: 3,
                         render: function (data) {
-                            return data;
+                            return `$${data.toFixed(2)}`;
                         },
                     },
                     {
                         targets: 4,
+                        render: function (data) {
+                            return data;
+                        },
+                    },
+                    {
+                        targets: 5,
                         render: function (data) {
                             return `<div class="d-flex gap-1 max-w-320px">${data.map(tag =>
                                 `<span class="badge bg-light text-muted">${tag}</span>`
@@ -120,31 +127,31 @@ document.addEventListener("DOMContentLoaded", function () {
                         },
                     },
                     {
-                        targets: 5,
-                        render: function (data) {
-                            return data;
-                        },
-                    },
-                    {
                         targets: 6,
                         render: function (data) {
-                            return `<span class="badge bg-warning-subtle text-warning fs-12 fw-medium hstack gap-1 w-max"><i class="ri-star-fill text-warning"></i>${data}</span>`;
+                            return data;
                         },
                     },
                     {
                         targets: 7,
                         render: function (data) {
-                            return data;
+                            return `<span class="badge bg-warning-subtle text-warning fs-12 fw-medium hstack gap-1 w-max"><i class="ri-star-fill text-warning"></i>${data}</span>`;
                         },
                     },
                     {
                         targets: 8,
                         render: function (data) {
-                            return data ? '<span class="badge bg-success">Published</span>' : '<span class="badge bg-danger">Unpublished</span>';
+                            return data;
                         },
                     },
                     {
                         targets: 9,
+                        render: function (data) {
+                            return data ? '<span class="badge bg-success">Published</span>' : '<span class="badge bg-danger">Unpublished</span>';
+                        },
+                    },
+                    {
+                        targets: 10,
                         searchable: false,
                         orderable: false,
                         render: function () {
@@ -161,7 +168,7 @@ document.addEventListener("DOMContentLoaded", function () {
                         }
                     }
                 ],
-                order: [[2, 'asc']], // Default order by Product Price
+                order: [[3, 'asc']], // Default order by Product Price
                 paging: true,
                 language: {
                     sLengthMenu: 'Show _MENU_',
