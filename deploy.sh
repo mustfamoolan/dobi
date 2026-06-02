@@ -40,6 +40,10 @@ fi
 echo "Putting application in maintenance mode..."
 php artisan down || true
 
+# Install/discover packages
+echo "Installing/discovering packages..."
+composer install --no-interaction --prefer-dist --optimize-autoloader || php artisan package:discover
+
 # Database migrations
 echo "Running database migrations..."
 php artisan migrate --force
