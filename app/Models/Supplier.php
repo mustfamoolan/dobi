@@ -8,6 +8,28 @@ class Supplier extends Model
 {
     protected $fillable = ['name', 'phone', 'email', 'address', 'opening_balance', 'currency', 'created_by', 'updated_by'];
 
+    protected static function booted()
+    {
+        static::deleting(function ($supplier) {
+            // 1. Delete all ledger entries
+            $supplier->ledgerEntries()->delete();
+
+            // 2. Delete all related purchases, including their items and stock movements
+            $purchases = Purchase::where('supplier_id', $supplier->id)->get();
+            foreach ($purchases as $purchase) {
+                // Delete purchase items
+                $purchase->items()->delete();
+                // Delete stock movements related to this purchase
+                StockMovement::where('ref_type', 'purchase')->where('ref_id', $purchase->id)->delete();
+                // Delete the purchase itself
+                $purchase->delete();
+            }
+
+            // 3. Delete related vouchers (where account_type is 'supplier' and account_id matches)
+            Voucher::where('account_type', 'supplier')->where('account_id', $supplier->id)->delete();
+        });
+    }
+
     public function purchases()
     {
         return $this->hasMany(Purchase::class);

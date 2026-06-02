@@ -16,6 +16,28 @@ class Customer extends Model
         'updated_by',
     ];
 
+    protected static function booted()
+    {
+        static::deleting(function ($customer) {
+            // 1. Delete all ledger entries
+            $customer->ledgerEntries()->delete();
+
+            // 2. Delete all related sales, including their items and stock movements
+            $sales = Sale::where('customer_id', $customer->id)->get();
+            foreach ($sales as $sale) {
+                // Delete sale items
+                $sale->items()->delete();
+                // Delete stock movements related to this sale
+                StockMovement::where('ref_type', 'sale')->where('ref_id', $sale->id)->delete();
+                // Delete the sale itself
+                $sale->delete();
+            }
+
+            // 3. Delete related vouchers (where account_type is 'customer' and account_id matches)
+            Voucher::where('account_type', 'customer')->where('account_id', $customer->id)->delete();
+        });
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
