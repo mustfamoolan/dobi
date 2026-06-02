@@ -18,6 +18,21 @@
         })();
     </script>
     @include('partials.head-css')
+    <script>
+        window.Laravel = {
+            broadcaster: "{{ env('BROADCAST_CONNECTION', 'reverb') }}",
+            pusher: {
+                key: "{{ env('PUSHER_APP_KEY') }}",
+                cluster: "{{ env('PUSHER_APP_CLUSTER', 'mt1') }}",
+            },
+            reverb: {
+                key: "{{ env('REVERB_APP_KEY') }}",
+                host: "{{ env('REVERB_HOST', 'localhost') }}",
+                port: "{{ env('REVERB_PORT', 8080) }}",
+                scheme: "{{ env('REVERB_SCHEME', 'http') }}",
+            }
+        };
+    </script>
     <script src="{{ asset('assets/js/app-custom.js') }}?v={{ time() }}"></script>
     @livewireStyles
 </head>
