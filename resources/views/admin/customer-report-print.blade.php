@@ -64,7 +64,7 @@
     <title>{{ __('Statement') }} - {{ $customer->name }}</title>
 
     <!-- PDF Generation Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
@@ -137,34 +137,37 @@
             flex-direction: column;
         }
 
-        /* Info Grid */
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1.5fr 1fr 1fr;
-            gap: 2mm 5mm;
+        /* Info Table */
+        .info-table {
+            width: 100%;
             margin-bottom: 4mm;
             color: #32267d;
             border: 1px solid #b0a8d8;
             background: rgba(243, 241, 251, 0.8);
-            padding: 3mm;
             border-radius: 2mm;
+            border-collapse: separate;
+            border-spacing: 0;
+            letter-spacing: normal !important;
         }
 
-        .info-item {
-            display: flex;
-            gap: 2mm;
-            align-items: center;
+        .info-table td {
+            border: none !important;
+            padding: 2mm 3mm !important;
+            vertical-align: middle;
+            letter-spacing: normal !important;
         }
 
-        .info-item label {
+        .info-label {
             color: #7a6fb0;
             font-size: 8.5pt;
+            margin-left: 1mm;
             white-space: nowrap;
         }
 
-        .info-item span {
+        .info-value {
             font-weight: 800;
             color: #32267d;
+            white-space: nowrap;
         }
 
         /* Table */
@@ -288,17 +291,27 @@
     <template id="page-template">
         <div class="page-container">
             <div class="print-area">
-                <div class="info-grid">
-                    <div class="info-item"><label>العميل:</label> <span class="data-name"></span></div>
-                    <div class="info-item"><label>التاريخ:</label> <span class="data-period"></span></div>
-                    <div class="info-item" style="justify-content: flex-end;"><label>العملة:</label> <span
-                            class="data-currency"></span></div>
-                </div>
+                <table class="info-table">
+                    <tr>
+                        <td style="width: 45%; text-align: right;">
+                            <span class="info-label">العميل:</span>
+                            <span class="info-value data-name"></span>
+                        </td>
+                        <td style="width: 35%; text-align: center;">
+                            <span class="info-label">التاريخ:</span>
+                            <span class="info-value data-period"></span>
+                        </td>
+                        <td style="width: 20%; text-align: left;">
+                            <span class="info-label">العملة:</span>
+                            <span class="info-value data-currency"></span>
+                        </td>
+                    </tr>
+                </table>
 
                 <table class="report-table">
                     <thead>
                         <tr>
-                            <th style="width: 25mm;">{{ __('Date') }}</th>
+                            <th style="width: 28mm; white-space: nowrap;">{{ __('Date') }}</th>
                             <th>{{ __('Description') }}</th>
                             <th style="width: 30mm;">{{ __('Debit') }}</th>
                             <th style="width: 30mm;">{{ __('Credit') }}</th>
@@ -368,7 +381,7 @@
                     const tr = document.createElement('tr');
                     if (idx % 2 === 0) tr.className = 'row-even';
                     tr.innerHTML = `
-                        <td class="text-center">${entry.date}</td>
+                        <td class="text-center" style="white-space: nowrap;">${entry.date}</td>
                         <td>${entry.description}</td>
                         <td class="text-center debit-cell">${entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
                         <td class="text-center credit-cell">${entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
@@ -405,21 +418,22 @@
             const pages = document.querySelectorAll('.page-container');
             const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 
-            for (let i = 0; i < pages.length; i++) {
-                const canvas = await html2canvas(pages[i], {
-                    scale: 3,
-                    useCORS: true,
-                    allowTaint: true,
-                    logging: false,
-                    backgroundColor: '#ffffff',
-                    scrollX: 0,
-                    scrollY: 0
-                });
-                const imgData = canvas.toDataURL('image/jpeg', 1.0);
-                if (i > 0) pdf.addPage();
-                pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+            try {
+                for (let i = 0; i < pages.length; i++) {
+                    const imgData = await htmlToImage.toPng(pages[i], {
+                        pixelRatio: 2,
+                        style: {
+                            margin: '0'
+                        }
+                    });
+                    if (i > 0) pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
+                }
+                pdf.save(`Statement_${reportData.customer.name}_${reportData.period.from}.pdf`);
+            } catch (error) {
+                console.error('PDF Generation failed:', error);
+                alert('حدث خطأ أثناء تحميل كشف الحساب كـ PDF.');
             }
-            pdf.save(`Statement_${reportData.customer.name}_${reportData.period.from}.pdf`);
         }
 
         window.addEventListener('load', () => {

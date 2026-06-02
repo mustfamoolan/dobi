@@ -67,7 +67,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
 
     <!-- PDF Generation Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
@@ -714,7 +714,7 @@
             }
         });
 
-        // === TRUE IMAGE DOWNLOAD using html2canvas ===
+        // === TRUE IMAGE DOWNLOAD using html-to-image ===
         async function downloadAsImage() {
             const pages = document.querySelectorAll('.page-container');
             document.body.classList.add('download-mode');
@@ -722,31 +722,24 @@
             // Small delay to let browser repaint with download-mode styles
             await new Promise(resolve => setTimeout(resolve, 150));
 
-            for (let i = 0; i < pages.length; i++) {
-                const canvas = await html2canvas(pages[i], {
-                    scale: 3, // High resolution
-                    useCORS: true,
-                    allowTaint: true,
-                    logging: false,
-                    backgroundColor: '#ffffff',
-                    scrollX: 0,
-                    scrollY: 0,
-                    onclone: (clonedDoc) => {
-                        // Fix for html2canvas RTL issues: 
-                        // Force direction on all Arabic-containing elements in the clone
-                        const rtlElements = clonedDoc.querySelectorAll('.data-customer, .data-items td, .data-words, .data-notes');
-                        rtlElements.forEach(el => {
-                            el.style.direction = 'rtl';
-                            el.style.textAlign = 'right';
-                        });
-                    }
-                });
-                
-                const link = document.createElement('a');
-                const pageSuffix = pages.length > 1 ? `_Page_${i+1}` : '';
-                link.download = `{{ $formattedId }}${pageSuffix}.png`;
-                link.href = canvas.toDataURL('image/png', 1.0);
-                link.click();
+            try {
+                for (let i = 0; i < pages.length; i++) {
+                    const imgData = await htmlToImage.toPng(pages[i], {
+                        pixelRatio: 2.5,
+                        style: {
+                            margin: '0'
+                        }
+                    });
+                    
+                    const link = document.createElement('a');
+                    const pageSuffix = pages.length > 1 ? `_Page_${i+1}` : '';
+                    link.download = `{{ $formattedId }}${pageSuffix}.png`;
+                    link.href = imgData;
+                    link.click();
+                }
+            } catch (error) {
+                console.error('Image Generation failed:', error);
+                alert('حدث خطأ أثناء تحميل الصورة.');
             }
 
             document.body.classList.remove('download-mode');
