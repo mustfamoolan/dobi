@@ -15,6 +15,9 @@ new class extends Component {
     public $name, $type = 'cash', $currency = 'IQD', $opening_balance = 0, $is_active = true;
     public $isEditMode = false;
 
+    // Transfer fields
+    public $fromAccountId, $toAccountId, $transferAmount, $transferDate, $transferDescription;
+
     protected $paginationTheme = 'bootstrap';
 
     public function updatingSearch()
@@ -97,6 +100,74 @@ new class extends Component {
         $this->dispatch('close-account-modal');
     }
 
+    public function openTransferModal()
+    {
+        $this->reset(['fromAccountId', 'toAccountId', 'transferAmount', 'transferDescription']);
+        $this->transferDate = now()->format('Y-m-d');
+        $this->dispatch('open-transfer-modal');
+    }
+
+    public function transfer()
+    {
+        $this->validate([
+            'fromAccountId' => 'required|exists:financial_accounts,id',
+            'toAccountId' => 'required|exists:financial_accounts,id|different:fromAccountId',
+            'transferAmount' => 'required|numeric|min:0.01',
+            'transferDate' => 'required|date',
+            'transferDescription' => 'nullable|string|max:255',
+        ]);
+
+        DB::transaction(function () {
+            $from = FinancialAccount::lockForUpdate()->findOrFail($this->fromAccountId);
+            $to = FinancialAccount::lockForUpdate()->findOrFail($this->toAccountId);
+
+            if ($from->currency !== $to->currency) {
+                session()->flash('error', __('Cannot transfer between accounts with different currencies.'));
+                $this->dispatch('close-transfer-modal');
+                return;
+            }
+
+            // Deduct from sender
+            $from->current_balance -= $this->transferAmount;
+            $from->save();
+
+            AccountLedger::create([
+                'account_id' => $from->id,
+                'date' => $this->transferDate,
+                'description' => $this->transferDescription ?: __('Transfer to :name', ['name' => $to->name]),
+                'debit' => 0,
+                'credit' => $this->transferAmount,
+                'balance' => $from->current_balance,
+                'ref_type' => 'transfer_out',
+                'created_by' => Auth::id(),
+            ]);
+
+            // Add to receiver
+            $to->current_balance += $this->transferAmount;
+            $to->save();
+
+            AccountLedger::create([
+                'account_id' => $to->id,
+                'date' => $this->transferDate,
+                'description' => $this->transferDescription ?: __('Transfer from :name', ['name' => $from->name]),
+                'debit' => $this->transferAmount,
+                'credit' => 0,
+                'balance' => $to->current_balance,
+                'ref_type' => 'transfer_in',
+                'created_by' => Auth::id(),
+            ]);
+
+            \App\Services\ActivityLogger::log('transfer', __('Transferred :amount from :from to :to', [
+                'amount' => $this->transferAmount . ' ' . $from->currency,
+                'from' => $from->name,
+                'to' => $to->name
+            ]));
+
+            session()->flash('success', __('Funds transferred successfully.'));
+            $this->dispatch('close-transfer-modal');
+        });
+    }
+
     public function delete($id)
     {
         $account = FinancialAccount::findOrFail($id);
@@ -130,6 +201,9 @@ new class extends Component {
             <div class="d-flex gap-2">
                 <input type="search" wire:model.live="search" class="form-control form-control-sm"
                     placeholder="{{ __('Search Accounts...') }}">
+                <button wire:click="openTransferModal" class="btn btn-secondary btn-sm">
+                    <i class="ri-arrow-left-right-line align-bottom me-1"></i> {{ __('Transfer Funds') }}
+                </button>
                 <button wire:click="openModal" class="btn btn-primary btn-sm">
                     <i class="ri-add-line align-bottom me-1"></i> {{ __('Add Account') }}
                 </button>
@@ -280,6 +354,67 @@ new class extends Component {
         </div>
     </div>
 
+    <!-- Transfer Modal -->
+    <div wire:ignore.self class="modal fade" id="transferModal" tabindex="-1" aria-labelledby="transferModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="transferModalLabel">{{ __('Transfer Funds') }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form wire:submit.prevent="transfer">
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">{{ __('From Account') }}</label>
+                                <select wire:model="fromAccountId" class="form-select @error('fromAccountId') is-invalid @enderror">
+                                    <option value="">{{ __('Select Account') }}</option>
+                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->get() as $acc)
+                                        <option value="{{ $acc->id }}">{{ $acc->name }} ({{ $acc->currency }})</option>
+                                    @endforeach
+                                </select>
+                                @error('fromAccountId') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">{{ __('To Account') }}</label>
+                                <select wire:model="toAccountId" class="form-select @error('toAccountId') is-invalid @enderror">
+                                    <option value="">{{ __('Select Account') }}</option>
+                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->get() as $acc)
+                                        <option value="{{ $acc->id }}">{{ $acc->name }} ({{ $acc->currency }})</option>
+                                    @endforeach
+                                </select>
+                                @error('toAccountId') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">{{ __('Amount') }}</label>
+                                <input type="number" step="0.01" wire:model="transferAmount"
+                                    class="form-control @error('transferAmount') is-invalid @enderror">
+                                @error('transferAmount') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">{{ __('Date') }}</label>
+                                <input type="date" wire:model="transferDate"
+                                    class="form-control @error('transferDate') is-invalid @enderror">
+                                @error('transferDate') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">{{ __('Description') }}</label>
+                                <input type="text" wire:model="transferDescription"
+                                    class="form-control @error('transferDescription') is-invalid @enderror" placeholder="{{ __('Optional') }}">
+                                @error('transferDescription') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
+                        <button type="submit" class="btn btn-primary">{{ __('Transfer') }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('livewire:init', () => {
             Livewire.on('open-account-modal', () => {
@@ -288,6 +423,16 @@ new class extends Component {
             });
             Livewire.on('close-account-modal', () => {
                 var myModalEl = document.getElementById('accountModal');
+                var modal = bootstrap.Modal.getInstance(myModalEl);
+                if (modal) modal.hide();
+            });
+
+            Livewire.on('open-transfer-modal', () => {
+                var myModal = new bootstrap.Modal(document.getElementById('transferModal'));
+                myModal.show();
+            });
+            Livewire.on('close-transfer-modal', () => {
+                var myModalEl = document.getElementById('transferModal');
                 var modal = bootstrap.Modal.getInstance(myModalEl);
                 if (modal) modal.hide();
             });
