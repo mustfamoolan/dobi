@@ -66,16 +66,7 @@
                             </div>
 
                             <div class="row mb-5">
-                                <div class="col-sm-6 text-start">
-                                    <div class="form-check form-check-sm d-flex align-items-center gap-2 mb-0">
-                                        <input class="form-check-input" type="checkbox" name="remember" value="remember-me"
-                                            id="remember-me" {{ old('remember') ? 'checked' : '' }}>
-                                        <label class="form-check-label" for="remember-me">
-                                            تذكرني
-                                        </label>
-                                    </div>
-                                </div>
-                                <a href="auth-reset-password" class="col-sm-6 text-end">
+                                <a href="auth-reset-password" class="col-12 text-end">
                                     <span class="fs-14 text-muted">
                                         نسيت كلمة المرور؟
                                     </span>
@@ -90,12 +81,7 @@
 
                             {{-- Social Media Login Removed as per user request --}}
 
-                            <p class="mb-0 mt-5 text-muted text-center">
-                                ليس لديك حساب ؟
-                                <a href="auth-signup" class="text-primary fw-medium text-decoraton-underline ms-1">
-                                    إنشاء حساب جديد
-                                </a>
-                            </p>
+
                         </form>
                     </div>
                 </div>

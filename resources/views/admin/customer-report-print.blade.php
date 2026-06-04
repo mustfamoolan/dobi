@@ -291,6 +291,9 @@
     <template id="page-template">
         <div class="page-container">
             <div class="print-area">
+                <div style="text-align: center; margin-bottom: 3mm; font-size: 14pt; font-weight: bold; color: #32267d;">
+                    كشف حساب
+                </div>
                 <table class="info-table">
                     <tr>
                         <td style="width: 45%; text-align: right;">
