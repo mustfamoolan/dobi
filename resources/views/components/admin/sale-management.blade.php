@@ -901,7 +901,7 @@ new class extends Component {
     private function revertSale($sale)
     {
         // 1. Revert Stock
-        StockMovement::where('ref_type', 'sale')->where('ref_id', $sale->id)->delete();
+        StockMovement::where('ref_type', 'sale')->where('ref_id', (string) $sale->id)->delete();
         
         // 2. Revert Customer Ledger
         CustomerLedger::where('ref_type', 'sale')->where('ref_id', $sale->id)->delete();

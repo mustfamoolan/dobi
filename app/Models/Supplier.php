@@ -20,7 +20,7 @@ class Supplier extends Model
                 // Delete purchase items
                 $purchase->items()->delete();
                 // Delete stock movements related to this purchase
-                StockMovement::where('ref_type', 'purchase')->where('ref_id', $purchase->id)->delete();
+                StockMovement::where('ref_type', 'purchase')->where('ref_id', (string) $purchase->id)->delete();
                 // Delete the purchase itself
                 $purchase->delete();
             }

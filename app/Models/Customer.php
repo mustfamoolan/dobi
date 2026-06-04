@@ -28,7 +28,7 @@ class Customer extends Model
                 // Delete sale items
                 $sale->items()->delete();
                 // Delete stock movements related to this sale
-                StockMovement::where('ref_type', 'sale')->where('ref_id', $sale->id)->delete();
+                StockMovement::where('ref_type', 'sale')->where('ref_id', (string) $sale->id)->delete();
                 // Delete the sale itself
                 $sale->delete();
             }

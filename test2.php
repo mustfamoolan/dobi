@@ -1,0 +1,1 @@
+<?php require __DIR__."/vendor/autoload.php"; $app = require_once __DIR__."/bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); $p = App\Models\Product::first(); $qin = $p->stockMovements()->sum("qty_in"); $qout = $p->stockMovements()->sum("qty_out"); echo "In: $qin Out: $qout Diff: ".($qin - $qout)."\n";

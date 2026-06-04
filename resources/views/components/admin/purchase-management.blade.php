@@ -465,7 +465,7 @@ new class extends Component {
     private function revertPurchase($purchase)
     {
         // 1. Revert Stock
-        StockMovement::where('ref_type', 'purchase')->where('ref_id', $purchase->id)->delete();
+        StockMovement::where('ref_type', 'purchase')->where('ref_id', (string) $purchase->id)->delete();
         
         // 2. Revert Supplier Ledger
         SupplierLedger::where('ref_type', 'purchase')->where('ref_id', $purchase->id)->delete();

@@ -1,0 +1,1 @@
+<?php require __DIR__."/vendor/autoload.php"; $app = require_once __DIR__."/bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); $sm = App\Models\StockMovement::where("ref_type", "sale")->latest()->take(5)->get(); foreach($sm as $m) echo "Sale ID: {$m->ref_id} Prod: {$m->product_id} QtyIn: {$m->qty_in} QtyOut: {$m->qty_out}\n";
