@@ -3,12 +3,12 @@
     $setting = \App\Models\AppSetting::first();
     $account = $voucher->account;
     
-    // Process logo
-    $logoPath = public_path('assets/images/auth/bg-img-2.png');
-    $logoBase64 = '';
-    if (file_exists($logoPath)) {
-        $mime = mime_content_type($logoPath) ?: 'image/png';
-        $logoBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($logoPath));
+    // Process background
+    $bgImagePath = public_path('assets/images/receipt.png');
+    $bgImageBase64 = '';
+    if (file_exists($bgImagePath)) {
+        $mime = mime_content_type($bgImagePath) ?: 'image/png';
+        $bgImageBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($bgImagePath));
     }
 
     $amountInWords = \App\Services\ArabicAmountToWords::translate($voucher->amount, $voucher->currency);
@@ -55,6 +55,8 @@
             padding: 0;
             background: #fff;
             color: #000;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
 
         .page-wrapper {
@@ -70,7 +72,13 @@
             padding: 15mm;
             box-sizing: border-box;
             position: relative;
+            background-image: url('{{ $bgImageBase64 }}') !important;
+            background-size: 100% 100%;
+            background-repeat: no-repeat;
+            background-position: center;
             border-bottom: 1px dashed #ccc; /* Cut line */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
 
         .voucher-wrapper:last-child {
@@ -81,6 +89,8 @@
             width: 100%;
             height: 100%;
             position: relative;
+            padding-top: 38mm; /* Pushes content down slightly more */
+            box-sizing: border-box;
         }
 
         .header-top {
@@ -90,55 +100,24 @@
             margin-bottom: 5mm;
         }
 
-        .company-section {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .logo-img {
-            height: 40px;
-            width: auto;
-        }
-
-        .company-name {
-            font-weight: 700;
-            font-size: 16px;
-        }
-
         .date-section {
             font-size: 14px;
-        }
-
-        .title-section {
-            text-align: center;
-            margin-bottom: 5mm;
-        }
-
-        .title-section h1 {
-            margin: 0;
-            font-size: 22px;
-            font-weight: 700;
-            border-bottom: 2px solid #000;
-            display: inline-block;
-            padding-bottom: 2px;
+            font-weight: bold;
         }
 
         .voucher-no {
-            display: block;
-            margin-top: 5px;
             font-size: 14px;
-            font-weight: 600;
+            font-weight: bold;
         }
 
         .content-body {
-            margin-top: 5mm;
+            margin-top: 2mm;
         }
 
         .input-row {
             display: flex;
             align-items: baseline;
-            margin-bottom: 10mm;
+            margin-bottom: 5mm;
             width: 100%;
         }
 
@@ -159,7 +138,7 @@
         }
 
         .footer-section {
-            margin-top: 15mm;
+            margin-top: 8mm;
             display: flex;
             justify-content: space-between;
             padding: 0 20mm;
@@ -200,6 +179,11 @@
             .print-btn {
                 display: none;
             }
+            .voucher-wrapper {
+                background-image: url('{{ $bgImageBase64 }}') !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
         }
     </style>
 </head>
@@ -210,21 +194,13 @@
     <div class="page-wrapper">
         <div class="voucher-wrapper">
             <div class="voucher-container">
-                <div class="header-top">
-                    <div class="company-section">
-                        @if($logoBase64)
-                            <img src="{{ $logoBase64 }}" class="logo-img" alt="Logo">
-                        @endif
-                        <span class="company-name">{{ $setting->company_name ?? 'اسم الشركة' }}</span>
+                <div class="header-top" style="margin-bottom: 5mm;">
+                    <div class="voucher-no">
+                        No. #{{ str_pad($voucher->id, 5, '0', STR_PAD_LEFT) }}
                     </div>
                     <div class="date-section">
                         التاريخ: &nbsp;&nbsp; {{ date('Y / m / d', strtotime($voucher->date)) }}
                     </div>
-                </div>
-
-                <div class="title-section">
-                    <h1>{{ $voucherTypeLabel }}</h1>
-                    <div class="voucher-no">No. #{{ str_pad($voucher->id, 5, '0', STR_PAD_LEFT) }}</div>
                 </div>
 
                 <div class="content-body">
