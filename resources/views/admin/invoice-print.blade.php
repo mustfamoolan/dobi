@@ -232,6 +232,12 @@
             unicode-bidi: isolate; /* Help html2canvas with Arabic text */
         }
 
+        .data-date, .data-no {
+            white-space: nowrap;
+            direction: ltr;
+            display: inline-block;
+        }
+
         /* Table Styling */
         .table-container-pre {
             position: absolute;
@@ -316,12 +322,18 @@
         .col-price {
             width: 28mm;
             text-align: center;
+            white-space: nowrap;
+            direction: ltr;
+            unicode-bidi: isolate;
         }
 
         /* السعر */
         .col-total {
             width: 32mm;
             text-align: center;
+            white-space: nowrap;
+            direction: ltr;
+            unicode-bidi: isolate;
         }
 
         /* الإجمالي */
@@ -391,12 +403,16 @@
         .summary-label {
             font-weight: bold;
             color: #32267d;
+            white-space: nowrap;
         }
 
         .summary-value {
             font-weight: 800;
             color: #32267d;
             font-size: 9.5pt;
+            white-space: nowrap;
+            direction: ltr;
+            unicode-bidi: isolate;
         }
 
         .total-in-words {

@@ -18,6 +18,11 @@ new class extends Component {
     public $opening_stock = 0, $warehouse_id; // Only used during creation
     public $isEditMode = false;
 
+    // Category Properties
+    public $categoryName;
+    public $categoryIdForEdit;
+    public $isCategoryEditMode = false;
+
     // Stock Adjustment Properties
     public $adj_product_id;
     public $adj_warehouse_id = '';
@@ -201,6 +206,67 @@ new class extends Component {
         session()->flash('success', __('Product deleted successfully.'));
     }
 
+    public function updateCategoryOrder($orderedIds)
+    {
+        foreach ($orderedIds as $index => $id) {
+            Category::where('id', $id)->update(['sort_order' => $index]);
+        }
+    }
+
+    public function openCategoryModal()
+    {
+        $this->reset(['categoryName', 'categoryIdForEdit', 'isCategoryEditMode']);
+        $this->dispatch('open-category-modal');
+    }
+
+    public function editCategory($id)
+    {
+        $category = Category::findOrFail($id);
+        $this->categoryIdForEdit = $category->id;
+        $this->categoryName = $category->name;
+        $this->isCategoryEditMode = true;
+        $this->dispatch('open-category-modal');
+    }
+
+    public function saveCategory()
+    {
+        $this->validate([
+            'categoryName' => 'required|string|max:255',
+        ]);
+
+        $data = [
+            'name' => $this->categoryName,
+            'updated_by' => Auth::id(),
+        ];
+
+        if ($this->isCategoryEditMode) {
+            $category = Category::findOrFail($this->categoryIdForEdit);
+            $category->update($data);
+            \App\Services\ActivityLogger::log('updated', __('Updated category: :name', ['name' => $category->name]), $category);
+            session()->flash('success', __('Category updated successfully.'));
+        } else {
+            $data['created_by'] = Auth::id();
+            $category = Category::create($data);
+            \App\Services\ActivityLogger::log('created', __('Created category: :name', ['name' => $category->name]), $category);
+            session()->flash('success', __('Category created successfully.'));
+        }
+
+        $this->dispatch('close-category-modal');
+    }
+
+    public function deleteCategory($id)
+    {
+        $category = Category::findOrFail($id);
+        $name = $category->name;
+        if ($category->products()->count() > 0) {
+            session()->flash('error', __('Cannot delete category with associated products.'));
+            return;
+        }
+        $category->delete();
+        \App\Services\ActivityLogger::log('deleted', __('Deleted category: :name', ['name' => $name]));
+        session()->flash('success', __('Category deleted successfully.'));
+    }
+
     public function render(): mixed
     {
         $products = Product::with('category')
@@ -219,7 +285,7 @@ new class extends Component {
             ->latest()
             ->paginate(10);
 
-        $categories = Category::withCount('products')->get();
+        $categories = Category::withCount('products')->orderBy('sort_order')->get();
 
         return view('components.admin.product-management', [
             'products' => $products,
@@ -251,6 +317,11 @@ new class extends Component {
                 </h5>
             </div>
             <div class="d-flex flex-wrap gap-2 align-items-center">
+                @if(empty($filter_category_id) && empty($search))
+                    <button wire:click="openCategoryModal" class="btn btn-secondary btn-sm">
+                        <i class="ri-add-line align-bottom me-1"></i> {{ __('Add Category') }}
+                    </button>
+                @endif
                 @if(!empty($filter_category_id) || !empty($search))
                     <select wire:model.live="filter_category_id" class="form-select form-select-sm" style="width: auto;">
                         <option value="">{{ __('Select Category') }}</option>
@@ -283,9 +354,9 @@ new class extends Component {
 
             @if(empty($filter_category_id) && empty($search))
                 <!-- CATEGORIES GRID VIEW -->
-                <div class="row g-4">
+                <div class="row g-4" id="categories-container">
                     <!-- ALL PRODUCTS CARD -->
-                    <div class="col-xl-3 col-lg-4 col-sm-6">
+                    <div class="col-xl-3 col-lg-4 col-sm-6 static-card">
                         <div class="card h-100 shadow-sm hover-shadow border border-light-subtle rounded-4" 
                              style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;"
                              onmouseover="this.style.transform='translateY(-5px)'; this.style.boxShadow='0 10px 20px rgba(0,0,0,0.08)';"
@@ -306,7 +377,7 @@ new class extends Component {
 
                     <!-- INDIVIDUAL CATEGORIES CARDS -->
                     @foreach($categories as $cat)
-                        <div class="col-xl-3 col-lg-4 col-sm-6">
+                        <div class="col-xl-3 col-lg-4 col-sm-6 sortable-card" data-id="{{ $cat->id }}">
                             <div class="card h-100 shadow-sm hover-shadow border border-light-subtle rounded-4" 
                                  style="cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;"
                                  onmouseover="this.style.transform='translateY(-5px)'; this.style.boxShadow='0 10px 20px rgba(0,0,0,0.08)';"
@@ -321,6 +392,15 @@ new class extends Component {
                                     <span class="badge bg-primary-subtle text-primary px-3 py-1 rounded-pill">
                                         {{ $cat->products_count }} {{ __('Products') }}
                                     </span>
+                                </div>
+                                <div class="card-footer bg-transparent border-top-0 d-flex justify-content-center gap-2 pb-4">
+                                    <button wire:click.stop="editCategory({{ $cat->id }})" class="btn btn-sm btn-soft-info px-3" title="{{ __('Edit') }}">
+                                        <i class="ri-edit-line"></i>
+                                    </button>
+                                    <button wire:click.stop="deleteCategory({{ $cat->id }})"
+                                        onclick="event.stopPropagation(); return confirm('{{ __('Are you sure?') }}')" class="btn btn-sm btn-soft-danger px-3" title="{{ __('Delete') }}">
+                                        <i class="ri-delete-bin-line"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -576,8 +656,66 @@ new class extends Component {
         </div>
     </div>
 
+    <!-- Category Modal -->
+    <div wire:ignore.self class="modal fade" id="categoryModal" tabindex="-1" aria-labelledby="categoryModalLabel"
+        aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="categoryModalLabel">
+                        {{ $isCategoryEditMode ? __('Edit Category') : __('Add New Category') }}
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form wire:submit.prevent="saveCategory">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">{{ __('Category Name') }}</label>
+                            <input type="text" wire:model="categoryName"
+                                class="form-control @error('categoryName') is-invalid @enderror">
+                            @error('categoryName') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-light" data-bs-dismiss="modal">{{ __('Cancel') }}</button>
+                        <button type="submit" class="btn btn-primary">{{ $isCategoryEditMode ? __('Update') : __('Create') }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 @script
 <script>
+    const initSortable = () => {
+        let container = document.getElementById('categories-container');
+        if (container && typeof Sortable !== 'undefined') {
+            if (container._sortable) {
+                container._sortable.destroy();
+            }
+            container._sortable = new Sortable(container, {
+                animation: 150,
+                filter: '.static-card',
+                onEnd: function (evt) {
+                    let orderedIds = [];
+                    container.querySelectorAll('.sortable-card').forEach(function(el) {
+                        let id = el.getAttribute('data-id');
+                        if (id) {
+                            orderedIds.push(id);
+                        }
+                    });
+                    $wire.updateCategoryOrder(orderedIds);
+                }
+            });
+        }
+    };
+
+    setTimeout(initSortable, 100);
+    Livewire.hook('morph.updated', () => {
+        setTimeout(initSortable, 100);
+    });
+
     $wire.on('open-product-modal', () => {
         let modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('productModal'));
         modal.show();
@@ -592,6 +730,14 @@ new class extends Component {
     });
     $wire.on('close-adjustment-modal', () => {
         let modal = bootstrap.Modal.getInstance(document.getElementById('adjustmentModal'));
+        if (modal) modal.hide();
+    });
+    $wire.on('open-category-modal', () => {
+        let modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('categoryModal'));
+        modal.show();
+    });
+    $wire.on('close-category-modal', () => {
+        let modal = bootstrap.Modal.getInstance(document.getElementById('categoryModal'));
         if (modal) modal.hide();
     });
 </script>

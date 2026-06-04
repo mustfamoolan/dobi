@@ -46,8 +46,8 @@ new class extends Component {
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
 
-        // Default to first active account
-        $this->financial_account_id = FinancialAccount::where('is_active', true)->first()?->id;
+        // Default to empty account
+        $this->financial_account_id = '';
     }
 
     public function updatedAccountId($value)
@@ -60,6 +60,16 @@ new class extends Component {
         } else {
             $this->unpaidSales = [];
             $this->sale_id = null;
+        }
+    }
+
+    public function updatedFinancialAccountId($value)
+    {
+        if ($value) {
+            $account = FinancialAccount::find($value);
+            if ($account) {
+                $this->currency = $account->currency;
+            }
         }
     }
 
@@ -84,7 +94,7 @@ new class extends Component {
         $this->date = now()->format('Y-m-d');
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
-        $this->financial_account_id = FinancialAccount::where('is_active', true)->first()?->id;
+        $this->financial_account_id = '';
         $this->dispatch('open-voucher-modal');
     }
 
@@ -438,7 +448,7 @@ new class extends Component {
                         
                         <div class="mb-3">
                             <label class="form-label">{{ __('Select Treasury / Account') }}</label>
-                            <select wire:model="financial_account_id"
+                            <select wire:model.live="financial_account_id"
                                 class="form-select @error('financial_account_id') is-invalid @enderror">
                                 <option value="">{{ __('Choose...') }}</option>
                                 @foreach($financialAccounts as $fa)

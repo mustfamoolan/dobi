@@ -68,11 +68,11 @@ new class extends Component {
     {
         $this->reset(['supplier_id', 'warehouse_id', 'items', 'notes', 'selected_product_id', 'item_qty', 'item_cost', 'payment_status', 'editingId']);
         $this->date = now()->format('Y-m-d');
-        // Default to first warehouse
-        $this->warehouse_id = \App\Models\Warehouse::first()->id ?? null;
+        // Default empty selections
+        $this->warehouse_id = '';
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
-        $this->financial_account_id = \App\Models\FinancialAccount::where('is_active', true)->first()?->id;
+        $this->financial_account_id = '';
         $this->showCreateModal = true;
         $this->dispatch('open-purchase-modal');
     }

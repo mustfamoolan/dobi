@@ -88,11 +88,11 @@ new class extends Component {
             'payment_status', 'discount', 'paid_amount', 'editingId'
         ]);
         $this->date = now()->format('Y-m-d');
-        // Default to first warehouse
-        $this->warehouse_id = Warehouse::first()->id ?? null;
+        // Default empty selections
+        $this->warehouse_id = '';
         $setting = AppSetting::first();
         $this->exchange_rate = $setting->exchange_rate ?? 1500;
-        $this->financial_account_id = \App\Models\FinancialAccount::where('is_active', true)->first()?->id;
+        $this->financial_account_id = '';
         $this->dispatch('open-sale-modal');
     }
 

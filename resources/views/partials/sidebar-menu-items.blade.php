@@ -9,12 +9,7 @@
     </li>
 
     <li class="menu-title" role="presentation">{{ __('Inventory Management') }}</li>
-    <li class="slide">
-        <a href="{{ route('admin.categories.index') }}" class="side-menu__item" role="menuitem">
-            <span class="side_menu_icon"><i class="ri-folder-line"></i></span>
-            <span class="side-menu__label">{{ __('Categories') }}</span>
-        </a>
-    </li>
+
     <li class="slide">
         <a href="{{ route('admin.products.index') }}" class="side-menu__item" role="menuitem">
             <span class="side_menu_icon"><i class="ri-shopping-bag-3-line"></i></span>
