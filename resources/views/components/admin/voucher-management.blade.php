@@ -452,7 +452,7 @@ new class extends Component {
                                 class="form-select @error('financial_account_id') is-invalid @enderror">
                                 <option value="">{{ __('Choose...') }}</option>
                                 @foreach($financialAccounts as $fa)
-                                    <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
+                                    <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }}) - {{ __('Balance') }}: {{ number_format($fa->current_balance, 0) }}</option>
                                 @endforeach
                             </select>
                             @error('financial_account_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
