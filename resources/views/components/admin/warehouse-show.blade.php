@@ -120,14 +120,71 @@ new class extends Component {
             $q->where('warehouse_id', $this->warehouse->id);
         })->get();
 
+        // 1. Balance before fromDate
+        $productBalances = [];
+        $whBalancesQuery = StockMovement::where('warehouse_id', $this->warehouse->id)
+            ->where('created_at', '<', $this->historyFromDate . ' 00:00:00');
+            
+        if ($this->historyProductId) {
+            $whBalancesQuery->where('product_id', $this->historyProductId);
+        }
+            
+        $whBalances = $whBalancesQuery->selectRaw('product_id, SUM(qty_in) as total_in, SUM(qty_out) as total_out')
+            ->groupBy('product_id')
+            ->get();
+            
+        foreach ($whBalances as $wb) {
+            $productBalances[$wb->product_id] = $wb->total_in - $wb->total_out;
+        }
+
+        $balanceForward = 0;
+        if ($this->historyProductId) {
+            $balanceForward = $productBalances[$this->historyProductId] ?? 0;
+        }
+
         $historyQuery = StockMovement::with(['product', 'creator'])
             ->where('warehouse_id', $this->warehouse->id)
             ->whereBetween('created_at', [$this->historyFromDate . ' 00:00:00', $this->historyToDate . ' 23:59:59'])
-            ->orderBy('created_at', 'desc')
-            ->orderBy('id', 'desc');
+            ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc');
 
         if ($this->historyProductId) {
             $historyQuery->where('product_id', $this->historyProductId);
+        }
+
+        $movements = $historyQuery->paginate(50);
+
+        // 2. Add previous pages' movements in range to the forward balances
+        $page = $this->getPage();
+        if ($page > 1) {
+            $previousMovementsQuery = StockMovement::where('warehouse_id', $this->warehouse->id)
+                ->whereBetween('created_at', [$this->historyFromDate . ' 00:00:00', $this->historyToDate . ' 23:59:59'])
+                ->orderBy('created_at', 'asc')
+                ->orderBy('id', 'asc');
+            if ($this->historyProductId) {
+                $previousMovementsQuery->where('product_id', $this->historyProductId);
+            }
+            $previousMovements = $previousMovementsQuery->limit(($page - 1) * 50)->get();
+
+            foreach ($previousMovements as $pm) {
+                if (!isset($productBalances[$pm->product_id])) {
+                    $productBalances[$pm->product_id] = 0;
+                }
+                $productBalances[$pm->product_id] += $pm->qty_in - $pm->qty_out;
+                
+                if ($this->historyProductId && $pm->product_id == $this->historyProductId) {
+                    $balanceForward += $pm->qty_in - $pm->qty_out;
+                }
+            }
+        }
+
+        // 3. Assign running warehouse balances directly into the paginated items
+        foreach ($movements as $movement) {
+            if (!isset($productBalances[$movement->product_id])) {
+                $productBalances[$movement->product_id] = 0;
+            }
+            $productBalances[$movement->product_id] += $movement->qty_in - $movement->qty_out;
+            $movement->product_running_balance = $productBalances[$movement->product_id];
         }
 
         return [
@@ -144,7 +201,8 @@ new class extends Component {
                 ->get(),
             'categories' => \App\Models\Category::all(),
             'historyProducts' => $productsInWarehouse,
-            'movements' => $historyQuery->paginate(50)
+            'movements' => $movements,
+            'balanceForward' => $balanceForward
         ];
     }
 }; ?>
@@ -264,11 +322,25 @@ new class extends Component {
                             <th>{{ __('Note') }}</th>
                             <th>{{ __('Qty In (+)') }}</th>
                             <th>{{ __('Qty Out (-)') }}</th>
+                            <th>{{ __('Balance') }}</th>
                             <th>{{ __('Operator') }}</th>
                         </tr>
                     </thead>
                     <tbody>
+                        @if($historyProductId)
+                        <tr class="table-info">
+                            <td colspan="6"><strong>{{ __('Balance Forward') }}</strong></td>
+                            <td colspan="2"><strong>{{ number_format($balanceForward, 0) }}</strong></td>
+                        </tr>
+                        @endif
+                        @php $runningBalance = $balanceForward; @endphp
                         @forelse($movements as $movement)
+                            @if($historyProductId)
+                                @php 
+                                    $runningBalance += $movement->qty_in; 
+                                    $runningBalance -= $movement->qty_out;
+                                @endphp
+                            @endif
                             <tr>
                                 <td>{{ $movement->created_at->format('Y-m-d H:i') }}</td>
                                 <td>{{ $movement->product->name ?? '---' }}</td>
@@ -280,14 +352,23 @@ new class extends Component {
                                 <td>{{ $movement->note }}</td>
                                 <td class="text-success">{{ $movement->qty_in > 0 ? '+' . number_format($movement->qty_in, 0) : '-' }}</td>
                                 <td class="text-danger">{{ $movement->qty_out > 0 ? '-' . number_format($movement->qty_out, 0) : '-' }}</td>
+                                <td><strong>{{ number_format($movement->product_running_balance, 0) }}</strong></td>
                                 <td>{{ $movement->creator->name ?? '---' }}</td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="text-center py-4">{{ __('No movements found.') }}</td>
+                                <td colspan="8" class="text-center py-4">{{ __('No movements found.') }}</td>
                             </tr>
                         @endforelse
                     </tbody>
+                    @if($historyProductId)
+                    <tfoot class="table-light">
+                        <tr>
+                            <th colspan="6" class="text-end">{{ __('Current Stock') }}</th>
+                            <th colspan="2">{{ number_format($runningBalance, 0) }}</th>
+                        </tr>
+                    </tfoot>
+                    @endif
                 </table>
             </div>
             <div class="mt-4">
@@ -296,6 +377,7 @@ new class extends Component {
         </div>
     </div>
     @endif
+
 
     <!-- Edit Warehouse Modal -->
     <div wire:ignore.self class="modal fade" id="editWarehouseModal" tabindex="-1"
