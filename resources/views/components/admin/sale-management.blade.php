@@ -177,6 +177,19 @@ new class extends Component {
     {
         if ($this->payment_status === 'paid') {
             $this->paid_amount = $this->grand_total;
+        } elseif ($this->payment_status === 'pending') {
+            $this->paid_amount = 0;
+        }
+    }
+
+    public function updatedPaidAmount()
+    {
+        if ((float)$this->paid_amount >= (float)$this->grand_total) {
+            $this->payment_status = 'paid';
+        } elseif ((float)$this->paid_amount > 0) {
+            $this->payment_status = 'partial';
+        } else {
+            $this->payment_status = 'pending';
         }
     }
 
@@ -354,7 +367,7 @@ new class extends Component {
             'items.*.price' => 'required|numeric|min:0',
             'discount' => 'required|numeric|min:0',
             'paid_amount' => 'required|numeric|min:0',
-            'financial_account_id' => 'required_if:paid_amount,>0',
+            'financial_account_id' => $this->paid_amount > 0 ? 'required|exists:financial_accounts,id' : 'nullable',
         ], [
             'items.*.qty.required' => __('Quantity is required for all items.'),
             'items.*.price.required' => __('Price is required for all items.'),
@@ -1154,6 +1167,7 @@ new class extends Component {
                                 <label class="form-label">{{ __('Payment Status') }}</label>
                                 <select wire:model.live="payment_status" class="form-select">
                                     <option value="pending">{{ __('pending') }}</option>
+                                    <option value="partial">{{ __('partial') }}</option>
                                     <option value="paid">{{ __('paid') }}</option>
                                 </select>
                             </div>
