@@ -4,9 +4,12 @@ use App\Models\Warehouse;
 use App\Models\Product;
 use App\Models\StockMovement;
 use Livewire\Volt\Component;
+use Livewire\WithPagination;
 use Illuminate\Support\Facades\Auth;
 
 new class extends Component {
+    use WithPagination;
+
     public $warehouse;
     public $productSearch = '';
     public $filter_category_id = '';
@@ -16,12 +19,23 @@ new class extends Component {
     public $adj_note = '';
     public $current_stock = 0;
 
+    public $activeTab = 'products';
+
+    // History Filters
+    public $historyFromDate;
+    public $historyToDate;
+    public $historyProductId = '';
+
     // Edit Metadata Fields
     public $name, $location, $notes;
+
+    protected $paginationTheme = 'bootstrap';
 
     public function mount($id)
     {
         $this->warehouse = Warehouse::findOrFail($id);
+        $this->historyFromDate = now()->startOfMonth()->format('Y-m-d');
+        $this->historyToDate = now()->endOfMonth()->format('Y-m-d');
         $this->initEditFields();
     }
 
@@ -31,6 +45,16 @@ new class extends Component {
         $this->location = $this->warehouse->location;
         $this->notes = $this->warehouse->notes;
     }
+
+    public function setTab($tab)
+    {
+        $this->activeTab = $tab;
+        $this->resetPage(); // Reset pagination when switching tabs
+    }
+
+    public function updatingHistoryFromDate() { $this->resetPage(); }
+    public function updatingHistoryToDate() { $this->resetPage(); }
+    public function updatingHistoryProductId() { $this->resetPage(); }
 
     public function openEditModal()
     {
@@ -92,6 +116,20 @@ new class extends Component {
 
     public function with()
     {
+        $productsInWarehouse = Product::whereHas('stockMovements', function($q) {
+            $q->where('warehouse_id', $this->warehouse->id);
+        })->get();
+
+        $historyQuery = StockMovement::with(['product', 'creator'])
+            ->where('warehouse_id', $this->warehouse->id)
+            ->whereBetween('created_at', [$this->historyFromDate . ' 00:00:00', $this->historyToDate . ' 23:59:59'])
+            ->orderBy('created_at', 'desc')
+            ->orderBy('id', 'desc');
+
+        if ($this->historyProductId) {
+            $historyQuery->where('product_id', $this->historyProductId);
+        }
+
         return [
             'products' => Product::whereHas('stockMovements', function($q) {
                     $q->where('warehouse_id', $this->warehouse->id);
@@ -104,7 +142,9 @@ new class extends Component {
                 })
                 ->where('is_active', true)
                 ->get(),
-            'categories' => \App\Models\Category::all()
+            'categories' => \App\Models\Category::all(),
+            'historyProducts' => $productsInWarehouse,
+            'movements' => $historyQuery->paginate(50)
         ];
     }
 }; ?>
@@ -112,7 +152,7 @@ new class extends Component {
 <div>
     <div class="row mb-3">
         <div class="col-12">
-            <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
                     <h4 class="mb-0">{{ __('Warehouse Details') }}: {{ $warehouse->name }}</h4>
                     <p class="text-muted mb-0">{{ $warehouse->location }} | {{ $warehouse->notes }}</p>
@@ -129,8 +169,22 @@ new class extends Component {
         </div>
     </div>
 
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link {{ $activeTab === 'products' ? 'active' : '' }}" href="#" wire:click.prevent="setTab('products')">
+                <i class="ri-box-3-line me-1"></i> {{ __('Products in Warehouse') }}
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {{ $activeTab === 'history' ? 'active' : '' }}" href="#" wire:click.prevent="setTab('history')">
+                <i class="ri-history-line me-1"></i> {{ __('Stock History') }}
+            </a>
+        </li>
+    </ul>
+
+    @if($activeTab === 'products')
     <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
             <h6 class="card-title mb-0">{{ __('Products in Warehouse') }}</h6>
             <div class="d-flex gap-2">
                 <select wire:model.live="filter_category_id" class="form-select form-select-sm" style="width: auto;">
@@ -176,7 +230,7 @@ new class extends Component {
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="text-center py-4">{{ __('No products found.') }}</td>
+                                <td colspan="3" class="text-center py-4">{{ __('No products found in this warehouse.') }}</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -184,6 +238,64 @@ new class extends Component {
             </div>
         </div>
     </div>
+    @elseif($activeTab === 'history')
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <h6 class="card-title mb-0">{{ __('Warehouse Stock History') }}</h6>
+            <div class="d-flex gap-2">
+                <select wire:model.live="historyProductId" class="form-select form-select-sm" style="min-width: 150px;">
+                    <option value="">{{ __('All Products') }}</option>
+                    @foreach($historyProducts as $p)
+                        <option value="{{ $p->id }}">{{ $p->name }}</option>
+                    @endforeach
+                </select>
+                <input type="date" wire:model.live="historyFromDate" class="form-control form-control-sm">
+                <input type="date" wire:model.live="historyToDate" class="form-control form-control-sm">
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>{{ __('Date') }}</th>
+                            <th>{{ __('Product') }}</th>
+                            <th>{{ __('Type') }}</th>
+                            <th>{{ __('Note') }}</th>
+                            <th>{{ __('Qty In (+)') }}</th>
+                            <th>{{ __('Qty Out (-)') }}</th>
+                            <th>{{ __('Operator') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($movements as $movement)
+                            <tr>
+                                <td>{{ $movement->created_at->format('Y-m-d H:i') }}</td>
+                                <td>{{ $movement->product->name ?? '---' }}</td>
+                                <td>
+                                    <span class="badge bg-{{ $movement->qty_in > 0 ? 'success' : 'warning' }}-subtle text-{{ $movement->qty_in > 0 ? 'success' : 'warning' }}">
+                                        {{ __($movement->ref_type) }}
+                                    </span>
+                                </td>
+                                <td>{{ $movement->note }}</td>
+                                <td class="text-success">{{ $movement->qty_in > 0 ? '+' . number_format($movement->qty_in, 0) : '-' }}</td>
+                                <td class="text-danger">{{ $movement->qty_out > 0 ? '-' . number_format($movement->qty_out, 0) : '-' }}</td>
+                                <td>{{ $movement->creator->name ?? '---' }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="7" class="text-center py-4">{{ __('No movements found.') }}</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4">
+                {{ $movements->links() }}
+            </div>
+        </div>
+    </div>
+    @endif
 
     <!-- Edit Warehouse Modal -->
     <div wire:ignore.self class="modal fade" id="editWarehouseModal" tabindex="-1"
