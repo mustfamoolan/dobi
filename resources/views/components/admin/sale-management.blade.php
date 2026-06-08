@@ -466,7 +466,9 @@ new class extends Component {
                         'qty_out' => $item['qty'],
                         'ref_type' => 'sale',
                         'ref_id' => $sale->id,
-                        'note' => 'Sale Invoice #' . $sale->id,
+                        'note' => $this->editingId 
+                            ? __('Sale Invoice') . ' #' . $sale->id . ' (' . __('Edit by') . ': ' . Auth::user()->name . ')'
+                            : __('Sale Invoice') . ' #' . $sale->id . ' (' . __('New') . ')',
                         'created_by' => Auth::id(),
                     ]);
                     
@@ -913,8 +915,24 @@ new class extends Component {
 
     private function revertSale($sale)
     {
-        // 1. Revert Stock
-        StockMovement::where('ref_type', 'sale')->where('ref_id', (string) $sale->id)->delete();
+        // 1. Revert Stock: Log return movements instead of deleting logs
+        $isInvoice = $sale->type === 'invoice';
+        if ($isInvoice) {
+            foreach ($sale->items as $item) {
+                StockMovement::create([
+                    'product_id' => $item->product_id,
+                    'warehouse_id' => $sale->warehouse_id,
+                    'qty_in' => $item->qty,
+                    'qty_out' => 0,
+                    'ref_type' => 'sale',
+                    'ref_id' => $sale->id,
+                    'note' => $this->editingId 
+                        ? __('Return due to Invoice Edit') . ' #' . $sale->id . ' (' . __('by') . ': ' . Auth::user()->name . ')'
+                        : __('Return due to Invoice Deletion') . ' #' . $sale->id . ' (' . __('by') . ': ' . Auth::user()->name . ')',
+                    'created_by' => Auth::id(),
+                ]);
+            }
+        }
         
         // 2. Revert Customer Ledger
         CustomerLedger::where('ref_type', 'sale')->where('ref_id', $sale->id)->delete();
