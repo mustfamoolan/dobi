@@ -160,23 +160,147 @@ new class extends Component {
             if ($this->affect_ledger) {
                 if ($this->account_type === 'customer') {
                     $customer = Customer::findOrFail($this->account_id);
-                    $currentBalance = $customer->getCurrentBalance($this->currency);
-                    $newBalance = $currentBalance + ($this->type === 'payment' ? $this->amount : -$this->amount);
+                    if ($this->type === 'receipt' && !$this->sale_id) {
+                        // 1. Get running balances for the customer
+                        $runningBalances = [
+                            'USD' => $customer->getCurrentBalance('USD'),
+                            'IQD' => $customer->getCurrentBalance('IQD'),
+                        ];
 
-                    CustomerLedger::create([
-                        'customer_id' => $this->account_id,
-                        'date' => $this->date,
-                        'type' => $this->type,
-                        'description' => $description,
-                        'currency' => $this->currency,
-                        'exchange_rate' => $this->exchange_rate,
-                        'debit' => $this->type === 'payment' ? $this->amount : 0,
-                        'credit' => $this->type === 'receipt' ? $this->amount : 0,
-                        'balance' => $newBalance,
-                        'ref_type' => 'voucher',
-                        'ref_id' => $voucher->id,
-                        'created_by' => Auth::id(),
-                    ]);
+                        $remainingVoucherAmount = (float)$this->amount;
+                        $voucherDecimals = $this->currency === 'USD' ? 2 : 0;
+
+                        // 2. Fetch unpaid/partially paid invoices, sorted by oldest first
+                        $unpaidSales = Sale::where('customer_id', $this->account_id)
+                            ->where('type', Sale::TYPE_INVOICE)
+                            ->orderBy('date', 'asc')
+                            ->orderBy('id', 'asc')
+                            ->get()
+                            ->filter(fn($sale) => $sale->remainingAmount() > 0);
+
+                        $allocatedSales = [];
+
+                        foreach ($unpaidSales as $sale) {
+                            if ($remainingVoucherAmount <= 0.0001) {
+                                break;
+                            }
+
+                            $saleRemainingInSaleCurrency = $sale->remainingAmount();
+
+                            // Convert sale remaining amount to voucher currency
+                            if ($sale->currency === $this->currency) {
+                                $saleRemainingInVoucherCurrency = $saleRemainingInSaleCurrency;
+                            } else {
+                                if ($this->currency === 'IQD' && $sale->currency === 'USD') {
+                                    $saleRemainingInVoucherCurrency = $saleRemainingInSaleCurrency * $this->exchange_rate;
+                                } elseif ($this->currency === 'USD' && $sale->currency === 'IQD') {
+                                    $saleRemainingInVoucherCurrency = $saleRemainingInSaleCurrency / ($this->exchange_rate ?: 1);
+                                } else {
+                                    $saleRemainingInVoucherCurrency = $saleRemainingInSaleCurrency;
+                                }
+                            }
+
+                            // Calculate allocation
+                            $allocatedInVoucherCurrency = min($remainingVoucherAmount, $saleRemainingInVoucherCurrency);
+                            $allocatedInVoucherCurrency = round($allocatedInVoucherCurrency, $voucherDecimals);
+
+                            if ($allocatedInVoucherCurrency <= 0) {
+                                continue;
+                            }
+
+                            // Convert allocated amount back to sale currency
+                            if ($sale->currency === $this->currency) {
+                                $allocatedInSaleCurrency = $allocatedInVoucherCurrency;
+                            } else {
+                                if ($this->currency === 'IQD' && $sale->currency === 'USD') {
+                                    $allocatedInSaleCurrency = $allocatedInVoucherCurrency / ($this->exchange_rate ?: 1);
+                                } elseif ($this->currency === 'USD' && $sale->currency === 'IQD') {
+                                    $allocatedInSaleCurrency = $allocatedInVoucherCurrency * $this->exchange_rate;
+                                } else {
+                                    $allocatedInSaleCurrency = $allocatedInVoucherCurrency;
+                                }
+                            }
+
+                            $saleDecimals = $sale->currency === 'USD' ? 2 : 0;
+                            $allocatedInSaleCurrency = round($allocatedInSaleCurrency, $saleDecimals);
+                            $allocatedInSaleCurrency = min($allocatedInSaleCurrency, $saleRemainingInSaleCurrency);
+
+                            if ($allocatedInSaleCurrency <= 0) {
+                                continue;
+                            }
+
+                            // Update running balance for this sale currency
+                            $runningBalances[$sale->currency] -= $allocatedInSaleCurrency;
+
+                            // Create payment CustomerLedger entry for this sale
+                            CustomerLedger::create([
+                                'customer_id' => $this->account_id,
+                                'date' => $this->date,
+                                'type' => 'payment',
+                                'description' => __('Payment for Sale') . ' #' . $sale->id . ' ' . __('via Voucher') . ' #' . $voucher->id,
+                                'currency' => $sale->currency,
+                                'exchange_rate' => $this->exchange_rate,
+                                'debit' => 0,
+                                'credit' => $allocatedInSaleCurrency,
+                                'balance' => $runningBalances[$sale->currency],
+                                'ref_type' => 'sale',
+                                'ref_id' => $sale->id,
+                                'created_by' => Auth::id(),
+                            ]);
+
+                            // Subtract from remaining voucher amount
+                            $remainingVoucherAmount -= $allocatedInVoucherCurrency;
+                            $remainingVoucherAmount = max(0, round($remainingVoucherAmount, $voucherDecimals));
+
+                            $allocatedSales[] = $sale;
+                        }
+
+                        // Update payment statuses
+                        foreach ($allocatedSales as $sale) {
+                            $sale->updatePaymentStatus();
+                        }
+
+                        // Create the main voucher ledger entry
+                        $excessAmount = round($remainingVoucherAmount, $voucherDecimals);
+                        if ($excessAmount > 0) {
+                            $runningBalances[$this->currency] -= $excessAmount;
+                        }
+
+                        CustomerLedger::create([
+                            'customer_id' => $this->account_id,
+                            'date' => $this->date,
+                            'type' => $this->type,
+                            'description' => $excessAmount > 0
+                                ? $description . ' (' . __('Excess Amount') . ')'
+                                : $description . ' (' . __('Fully allocated to invoices') . ')',
+                            'currency' => $this->currency,
+                            'exchange_rate' => $this->exchange_rate,
+                            'debit' => 0,
+                            'credit' => $excessAmount,
+                            'balance' => $runningBalances[$this->currency],
+                            'ref_type' => 'voucher',
+                            'ref_id' => $voucher->id,
+                            'created_by' => Auth::id(),
+                        ]);
+                    } else {
+                        $currentBalance = $customer->getCurrentBalance($this->currency);
+                        $newBalance = $currentBalance + ($this->type === 'payment' ? $this->amount : -$this->amount);
+
+                        CustomerLedger::create([
+                            'customer_id' => $this->account_id,
+                            'date' => $this->date,
+                            'type' => $this->type,
+                            'description' => $description,
+                            'currency' => $this->currency,
+                            'exchange_rate' => $this->exchange_rate,
+                            'debit' => $this->type === 'payment' ? $this->amount : 0,
+                            'credit' => $this->type === 'receipt' ? $this->amount : 0,
+                            'balance' => $newBalance,
+                            'ref_type' => 'voucher',
+                            'ref_id' => $voucher->id,
+                            'created_by' => Auth::id(),
+                        ]);
+                    }
                 } elseif ($this->account_type === 'supplier') {
                     $supplier = Supplier::findOrFail($this->account_id);
                     $currentBalance = $supplier->getCurrentBalance($this->currency);

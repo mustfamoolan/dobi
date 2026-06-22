@@ -680,13 +680,27 @@ new class extends Component {
                                 <div class="row align-items-end g-3">
                                     <div class="col-md-6">
                                         <label class="form-label">{{ __('Product') }}</label>
-                                        <select wire:model.live="selected_product_id" class="form-select">
-                                            <option value="">{{ __('Choose Product...') }}</option>
-                                            @foreach($products as $product)
-                                                <option value="{{ $product->id }}">{{ $product->name }}
-                                                </option>
-                                            @endforeach
-                                        </select>
+                                        {{-- Searchable Product Picker --}}
+                                        <div class="product-search-wrapper" id="purchProductWrapper" style="position:relative;">
+                                            <div class="input-group">
+                                                <input type="text"
+                                                    id="purchProductSearchInput"
+                                                    class="form-control"
+                                                    placeholder="{{ __('Search product...') }}"
+                                                    autocomplete="off"
+                                                    onkeyup="filterPurchProducts(this.value)"
+                                                    onfocus="showPurchProductList()"
+                                                >
+                                                <button class="btn btn-outline-secondary" type="button" onclick="clearPurchProduct()" title="{{ __('Clear') }}">
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            </div>
+                                            <div id="purchProductDropdown"
+                                                style="display:none; position:absolute; z-index:9999; width:100%; max-height:220px; overflow-y:auto; background:#fff; border:1px solid #ced4da; border-radius:0.375rem; box-shadow:0 4px 16px rgba(0,0,0,0.12);">
+                                            </div>
+                                        </div>
+                                        {{-- Hidden products data for JS --}}
+                                        <div id="purchProductsData" style="display:none;">@json($products->map(function($p) { return ['id'=>$p->id, 'name'=>$p->name]; }))</div>
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">{{ __('Qty') }}</label>
@@ -1191,11 +1205,114 @@ new class extends Component {
 
     @script
     <script>
+        // ====== Searchable Product Picker for PURCHASE ======
+        var _purchAllProducts = [];
+        var _purchSelectedId = null;
+
+        window._purchLoadProducts = function() {
+            try {
+                var el = document.getElementById('purchProductsData');
+                if (el) _purchAllProducts = JSON.parse(el.textContent);
+            } catch(e) { _purchAllProducts = []; }
+        }
+
+        window.filterPurchProducts = function(query) {
+            if (!_purchAllProducts.length) _purchLoadProducts();
+            var dd = document.getElementById('purchProductDropdown');
+            if (!dd) return;
+            var q = query.trim().toLowerCase();
+            var filtered = q ? _purchAllProducts.filter(p => p.name.toLowerCase().includes(q)) : _purchAllProducts;
+            renderPurchDropdown(filtered);
+            dd.style.display = filtered.length ? 'block' : 'none';
+        }
+
+        window.showPurchProductList = function() {
+            if (!_purchAllProducts.length) _purchLoadProducts();
+            var dd = document.getElementById('purchProductDropdown');
+            if (!dd) return;
+            var inp = document.getElementById('purchProductSearchInput');
+            var q = inp ? inp.value.trim().toLowerCase() : '';
+            var filtered = q ? _purchAllProducts.filter(p => p.name.toLowerCase().includes(q)) : _purchAllProducts;
+            renderPurchDropdown(filtered);
+            dd.style.display = filtered.length ? 'block' : 'none';
+        }
+
+        function renderPurchDropdown(items) {
+            var dd = document.getElementById('purchProductDropdown');
+            if (!dd) return;
+            if (!items.length) {
+                dd.innerHTML = '<div style="padding:10px 14px;color:#888;">{{ __('No products found') }}</div>';
+                return;
+            }
+            dd.innerHTML = items.map(function(p) {
+                var isSelected = (p.id == _purchSelectedId);
+                return '<div onclick="selectPurchProduct(' + p.id + ', \'' + p.name.replace(/'/g, "\\'") + '\')" ' +
+                    'style="padding:9px 14px;cursor:pointer;font-size:14px;' + (isSelected ? 'background:#e8f4ff;font-weight:600;' : '') + '" ' +
+                    'onmouseover="this.style.background=\'#f0f6ff\'" onmouseout="this.style.background=\'' + (isSelected?'#e8f4ff':'#fff') + '\'">' +
+                    '<span>' + p.name + '</span>' +
+                    '</div>';
+            }).join('');
+        }
+
+        window.selectPurchProduct = function(id, name) {
+            _purchSelectedId = id;
+            var inp = document.getElementById('purchProductSearchInput');
+            if (inp) inp.value = name;
+            var dd = document.getElementById('purchProductDropdown');
+            if (dd) dd.style.display = 'none';
+            $wire.set('selected_product_id', id, true);
+        }
+
+        window.clearPurchProduct = function() {
+            _purchSelectedId = null;
+            var inp = document.getElementById('purchProductSearchInput');
+            if (inp) inp.value = '';
+            var dd = document.getElementById('purchProductDropdown');
+            if (dd) dd.style.display = 'none';
+            $wire.set('selected_product_id', '', true);
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            var wrapper = document.getElementById('purchProductWrapper');
+            if (wrapper && !wrapper.contains(e.target)) {
+                var dd = document.getElementById('purchProductDropdown');
+                if (dd) dd.style.display = 'none';
+            }
+        });
+
+        // When Livewire re-renders, detect if selected_product_id was cleared (e.g. after addItem)
+        document.addEventListener('livewire:updated', function() {
+            _purchLoadProducts();
+            if (_purchSelectedId) {
+                try {
+                    var currentId = $wire.get('selected_product_id');
+                    if (!currentId) {
+                        _purchSelectedId = null;
+                        var inp = document.getElementById('purchProductSearchInput');
+                        if (inp) inp.value = '';
+                    }
+                } catch(e) {}
+            }
+        });
+
+        // When modal opens, clear and reload
         $wire.on('open-purchase-modal', () => {
             var myModalEl = document.getElementById('purchaseModal');
             var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
             modal.show();
+            setTimeout(function() {
+                _purchSelectedId = null;
+                var inp = document.getElementById('purchProductSearchInput');
+                if (inp) inp.value = '';
+                var dd = document.getElementById('purchProductDropdown');
+                if (dd) dd.style.display = 'none';
+                _purchLoadProducts();
+            }, 100);
         });
+        // ====== End Purchase Product Picker ======
+
+
         $wire.on('close-purchase-modal', () => {
             var myModalEl = document.getElementById('purchaseModal');
             var modal = bootstrap.Modal.getInstance(myModalEl);

@@ -205,7 +205,7 @@
 
                 <div class="content-body">
                     <div class="input-row">
-                        <span class="label">استلمنا من السيد:</span>
+                        <span class="label">{{ $voucher->type == 'receipt' ? 'استلمنا من السيد:' : 'يصرف للسيد:' }}</span>
                         <div class="value-line">{{ $account->name ?? '------------------------------------------------------------' }}</div>
                     </div>
 

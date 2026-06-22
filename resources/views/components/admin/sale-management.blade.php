@@ -935,7 +935,24 @@ new class extends Component {
         }
         
         // 2. Revert Customer Ledger
-        CustomerLedger::where('ref_type', 'sale')->where('ref_id', $sale->id)->delete();
+        $ledgerEntries = CustomerLedger::where('ref_type', 'sale')->where('ref_id', $sale->id)->get();
+        foreach ($ledgerEntries as $entry) {
+            if ($entry->type === 'payment' && $entry->credit > 0) {
+                // Check if this payment was via a voucher by checking the description
+                if (preg_match('/(?:Voucher|سند)\s*#?(\d+)/iu', $entry->description, $matches)) {
+                    $voucherId = $matches[1];
+                    // Instead of deleting, convert this entry to a general voucher credit
+                    $entry->update([
+                        'ref_type' => 'voucher',
+                        'ref_id' => $voucherId,
+                        'type' => 'receipt',
+                        'description' => __('Receipt Voucher') . ' #' . $voucherId . ' (' . __('Reverted from Deleted Invoice') . ' #' . $sale->id . ')',
+                    ]);
+                    continue; // Skip deletion
+                }
+            }
+            $entry->delete();
+        }
         
         // 3. Revert Employee Ledger
         EmployeeLedger::where('ref_type', 'sale')->where('ref_id', $sale->id)->delete();
@@ -1213,17 +1230,28 @@ new class extends Component {
                                 <div class="row align-items-end g-3">
                                     <div class="col-md-6">
                                         <label class="form-label">{{ __('Product') }}</label>
-                                        <select wire:model.live="selected_product_id" class="form-select">
-                                            <option value="">{{ __('Choose Product...') }}</option>
-                                            @foreach($products as $product)
-                                                @php
-                                                    $wStock = $this->warehouse_id ? $product->currentStock($this->warehouse_id) : $product->stock;
-                                                @endphp
-                                                <option value="{{ $product->id }}">
-                                                    {{ $product->name }} - {{ __('Stock') }}: {{ $wStock }}
-                                                </option>
-                                            @endforeach
-                                        </select>
+                                        {{-- Searchable Product Picker --}}
+                                        <div class="product-search-wrapper" id="saleProductWrapper" style="position:relative;">
+                                            <div class="input-group">
+                                                <input type="text"
+                                                    id="saleProductSearchInput"
+                                                    class="form-control"
+                                                    placeholder="{{ __('Search product...') }}"
+                                                    autocomplete="off"
+                                                    onkeyup="filterSaleProducts(this.value)"
+                                                    onfocus="showSaleProductList()"
+                                                >
+                                                <button class="btn btn-outline-secondary" type="button" onclick="clearSaleProduct()" title="{{ __('Clear') }}">
+                                                    <i class="ri-close-line"></i>
+                                                </button>
+                                            </div>
+                                            <div id="saleProductDropdown"
+                                                style="display:none; position:absolute; z-index:9999; width:100%; max-height:220px; overflow-y:auto; background:#fff; border:1px solid #ced4da; border-radius:0.375rem; box-shadow:0 4px 16px rgba(0,0,0,0.12);">
+                                            </div>
+                                        </div>
+                                        {{-- Hidden products data for JS --}}
+                                        <div id="saleProductsData" style="display:none;">@json($products->map(function($p) { return ['id'=>$p->id, 'name'=>$p->name, 'stock'=>$p->stock]; }))</div>
+                                        {{-- Price hints from Livewire --}}
                                         @if($last_customer_price !== null || $last_other_price !== null)
                                             <div class="mt-1 d-flex gap-2 flex-wrap">
                                                 @if($last_customer_price !== null)
@@ -1862,113 +1890,216 @@ new class extends Component {
         </div>
     </div>
 
+    @script
     <script>
-        document.addEventListener('livewire:init', () => {
-            // Sale Create Modal
-            Livewire.on('open-sale-modal', () => {
-                var myModalEl = document.getElementById('saleModal');
-                var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
-                modal.show();
-            });
-            Livewire.on('close-sale-modal', () => {
-                var myModalEl = document.getElementById('saleModal');
-                var modal = bootstrap.Modal.getInstance(myModalEl);
-                if (modal) modal.hide();
-            });
+        // ====== Searchable Product Picker for SALE ======
+        var _saleAllProducts = [];
+        var _saleSelectedId = null;
 
-            // View Sale Modal
-            Livewire.on('open-view-modal', () => {
-                var myModalEl = document.getElementById('viewModal');
-                var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
-                modal.show();
-            });
+        window._saleLoadProducts = function() {
+            try {
+                var el = document.getElementById('saleProductsData');
+                if (el) _saleAllProducts = JSON.parse(el.textContent);
+            } catch(e) { _saleAllProducts = []; }
+        }
 
-            Livewire.on('open-confirm-convert-modal', () => {
-                var myModalEl = document.getElementById('confirmConvertModal');
-                var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
-                modal.show();
-            });
+        window.filterSaleProducts = function(query) {
+            if (!_saleAllProducts.length) _saleLoadProducts();
+            var dd = document.getElementById('saleProductDropdown');
+            if (!dd) return;
+            var q = query.trim().toLowerCase();
+            var filtered = q ? _saleAllProducts.filter(p => p.name.toLowerCase().includes(q)) : _saleAllProducts;
+            renderSaleDropdown(filtered);
+            dd.style.display = filtered.length ? 'block' : 'none';
+        }
 
-            Livewire.on('close-confirm-convert-modal', () => {
-                var myModalEl = document.getElementById('confirmConvertModal');
-                var modal = bootstrap.Modal.getInstance(myModalEl);
-                if (modal) modal.hide();
-            });
+        window.showSaleProductList = function() {
+            if (!_saleAllProducts.length) _saleLoadProducts();
+            var dd = document.getElementById('saleProductDropdown');
+            if (!dd) return;
+            var inp = document.getElementById('saleProductSearchInput');
+            var q = inp ? inp.value.trim().toLowerCase() : '';
+            var filtered = q ? _saleAllProducts.filter(p => p.name.toLowerCase().includes(q)) : _saleAllProducts;
+            renderSaleDropdown(filtered);
+            dd.style.display = filtered.length ? 'block' : 'none';
+        }
 
-            // Direct Printing Logic
-            Livewire.on('trigger-direct-print', (dataArray) => {
-                const data = dataArray[0]; // Livewire 3 pass data in an array
-                const frame = document.getElementById('printFrame');
-                
-                // Set frame src to the print URL
-                frame.src = data.url;
+        function renderSaleDropdown(items) {
+            var dd = document.getElementById('saleProductDropdown');
+            if (!dd) return;
+            if (!items.length) {
+                dd.innerHTML = '<div style="padding:10px 14px;color:#888;">{{ __('No products found') }}</div>';
+                return;
+            }
+            dd.innerHTML = items.map(function(p) {
+                var isSelected = (p.id == _saleSelectedId);
+                return '<div onclick="selectSaleProduct(' + p.id + ', \'' + p.name.replace(/'/g, "\\'") + '\')" ' +
+                    'style="padding:9px 14px;cursor:pointer;font-size:14px;' + (isSelected ? 'background:#e8f4ff;font-weight:600;' : '') + '" ' +
+                    'onmouseover="this.style.background=\'#f0f6ff\'" onmouseout="this.style.background=\'' + (isSelected?'#e8f4ff':'#fff') + '\'">' +
+                    '<span>' + p.name + '</span>' +
+                    '<small style="float:right;color:#888;">{{ __('Stock') }}: ' + p.stock + '</small>' +
+                    '</div>';
+            }).join('');
+        }
 
-                // Wait for iframe to load, then print
-                frame.onload = function() {
-                    frame.contentWindow.focus();
-                    frame.contentWindow.print();
-                };
-            });
+        window.selectSaleProduct = function(id, name) {
+            _saleSelectedId = id;
+            var inp = document.getElementById('saleProductSearchInput');
+            if (inp) inp.value = name;
+            var dd = document.getElementById('saleProductDropdown');
+            if (dd) dd.style.display = 'none';
+            $wire.set('selected_product_id', id, true);
+        }
 
-            // Auto-open Print/Download modal after saving a new invoice
-            Livewire.on('sale-saved', (dataArray) => {
-                const saleId = dataArray[0] ?? dataArray.id ?? dataArray;
-                const baseUrl = '/admin/sales/' + saleId + '/print';
+        window.clearSaleProduct = function() {
+            _saleSelectedId = null;
+            var inp = document.getElementById('saleProductSearchInput');
+            if (inp) inp.value = '';
+            var dd = document.getElementById('saleProductDropdown');
+            if (dd) dd.style.display = 'none';
+            $wire.set('selected_product_id', '', true);
+        }
 
-                document.getElementById('modalSaleId').textContent = '#' + saleId;
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            var wrapper = document.getElementById('saleProductWrapper');
+            if (wrapper && !wrapper.contains(e.target)) {
+                var dd = document.getElementById('saleProductDropdown');
+                if (dd) dd.style.display = 'none';
+            }
+        });
 
-                // Print button: directly trigger print via iframe (no new tab)
-                document.getElementById('btnPrintInvoice').onclick = function(e) {
-                    e.preventDefault();
-                    directPrintUrl(baseUrl + '?autoprint=1');
-                    bootstrap.Modal.getInstance(document.getElementById('printDownloadModal')).hide();
-                };
+        // When Livewire re-renders, re-load products and reset field if product was cleared
+        document.addEventListener('livewire:updated', function() {
+            _saleLoadProducts();
+            if (_saleSelectedId) {
+                try {
+                    var currentId = $wire.get('selected_product_id');
+                    if (!currentId) {
+                        _saleSelectedId = null;
+                        var inp = document.getElementById('saleProductSearchInput');
+                        if (inp) inp.value = '';
+                    }
+                } catch(e) {}
+            }
+        });
 
-                // Download button: trigger download via iframe with bg (no new tab)
-                document.getElementById('btnDownloadInvoice').onclick = function(e) {
-                    e.preventDefault();
-                    directPrintUrl(baseUrl + '?autodownload=1');
-                    bootstrap.Modal.getInstance(document.getElementById('printDownloadModal')).hide();
-                };
+        // After openCreateModal: clear the product search input
+        $wire.on('open-sale-modal', function() {
+            setTimeout(function() {
+                _saleSelectedId = null;
+                var inp = document.getElementById('saleProductSearchInput');
+                if (inp) inp.value = '';
+                var dd = document.getElementById('saleProductDropdown');
+                if (dd) dd.style.display = 'none';
+                _saleLoadProducts();
+            }, 100);
+        });
 
-                const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('printDownloadModal'));
-                modal.show();
-            });
+        // Sale Create Modal
+        $wire.on('open-sale-modal', () => {
+            var myModalEl = document.getElementById('saleModal');
+            var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
+            modal.show();
+        });
+        $wire.on('close-sale-modal', () => {
+            var myModalEl = document.getElementById('saleModal');
+            var modal = bootstrap.Modal.getInstance(myModalEl);
+            if (modal) modal.hide();
+        });
 
-            // Payment Modal Events
-            Livewire.on('open-payment-modal', () => {
-                var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('paymentModal'));
-                modal.show();
-            });
-            Livewire.on('close-payment-modal', () => {
-                var modal = bootstrap.Modal.getInstance(document.getElementById('paymentModal'));
-                if (modal) modal.hide();
-            });
+        // View Sale Modal
+        $wire.on('open-view-modal', () => {
+            var myModalEl = document.getElementById('viewModal');
+            var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
+            modal.show();
+        });
 
-            // Delete Modal Events
-            Livewire.on('open-delete-modal', () => {
-                var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteSaleModal'));
-                modal.show();
-            });
-            Livewire.on('close-delete-modal', () => {
-                var modal = bootstrap.Modal.getInstance(document.getElementById('deleteSaleModal'));
-                if (modal) modal.hide();
-            });
+        $wire.on('open-confirm-convert-modal', () => {
+            var myModalEl = document.getElementById('confirmConvertModal');
+            var modal = bootstrap.Modal.getOrCreateInstance(myModalEl);
+            modal.show();
+        });
+
+        $wire.on('close-confirm-convert-modal', () => {
+            var myModalEl = document.getElementById('confirmConvertModal');
+            var modal = bootstrap.Modal.getInstance(myModalEl);
+            if (modal) modal.hide();
+        });
+
+        // Direct Printing Logic
+        $wire.on('trigger-direct-print', (dataArray) => {
+            const data = dataArray[0]; // Livewire 3 pass data in an array
+            const frame = document.getElementById('printFrame');
+            
+            // Set frame src to the print URL
+            frame.src = data.url;
+
+            // Wait for iframe to load, then print
+            frame.onload = function() {
+                frame.contentWindow.focus();
+                frame.contentWindow.print();
+            };
+        });
+
+        // Auto-open Print/Download modal after saving a new invoice
+        $wire.on('sale-saved', (dataArray) => {
+            const saleId = dataArray[0] ?? dataArray.id ?? dataArray;
+            const baseUrl = '/admin/sales/' + saleId + '/print';
+
+            document.getElementById('modalSaleId').textContent = '#' + saleId;
+
+            // Print button: directly trigger print via iframe (no new tab)
+            document.getElementById('btnPrintInvoice').onclick = function(e) {
+                e.preventDefault();
+                directPrintUrl(baseUrl + '?autoprint=1');
+                bootstrap.Modal.getInstance(document.getElementById('printDownloadModal')).hide();
+            };
+
+            // Download button: trigger download via iframe with bg (no new tab)
+            document.getElementById('btnDownloadInvoice').onclick = function(e) {
+                e.preventDefault();
+                directPrintUrl(baseUrl + '?autodownload=1');
+                bootstrap.Modal.getInstance(document.getElementById('printDownloadModal')).hide();
+            };
+
+            const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('printDownloadModal'));
+            modal.show();
+        });
+
+        // Payment Modal Events
+        $wire.on('open-payment-modal', () => {
+            var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('paymentModal'));
+            modal.show();
+        });
+        $wire.on('close-payment-modal', () => {
+            var modal = bootstrap.Modal.getInstance(document.getElementById('paymentModal'));
+            if (modal) modal.hide();
+        });
+
+        // Delete Modal Events
+        $wire.on('open-delete-modal', () => {
+            var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteSaleModal'));
+            modal.show();
+        });
+        $wire.on('close-delete-modal', () => {
+            var modal = bootstrap.Modal.getInstance(document.getElementById('deleteSaleModal'));
+            if (modal) modal.hide();
         });
 
         // --- Shared iframe loader for print/download ---
-        function directPrintUrl(url) {
+        window.directPrintUrl = function(url) {
             const frame = document.getElementById('printFrame');
             frame.src = url;
             frame.onload = function() {
                 frame.contentWindow.focus();
-                // The page will auto-trigger print or download via its own JS
             };
         }
 
         // Download button in sales list row
-        function directDownload(saleId) {
+        window.directDownload = function(saleId) {
             directPrintUrl('/admin/sales/' + saleId + '/print?autodownload=1');
         }
     </script>
+    @endscript
 </div>
