@@ -15,6 +15,8 @@
     $previousBalance = 0;
     if ($type == 'sale' && $model->customer) {
         $previousBalance = $model->customer->getBalanceBeforeSale($model->id, $model->currency);
+    } elseif ($type == 'purchase' && $model->supplier) {
+        $previousBalance = $model->supplier->getBalanceBeforePurchase($model->id, $model->currency);
     }
 
     $idPrefix = $type == 'sale' ? ($model->type == 'invoice' ? 'INV-' : ($model->type == 'quotation' ? 'QUO-' : 'PRO-')) : 'PUR-';
@@ -22,7 +24,7 @@
     // Transform model to JSON for the JS printer
     $invoiceData = [
         'id' => $formattedId,
-        'type_raw' => $model->type ?? 'invoice',
+        'type_raw' => $type === 'purchase' ? 'purchase' : ($model->type ?? 'invoice'),
         'type_label' => $typeLabel,
         'date' => $model->date,
         'customer' => [
@@ -45,11 +47,11 @@
             'discount' => $model->discount ?? 0,
             'extra' => $model->tax ?? 0,
             'net' => $model->grand_total,
-            'paid' => $type === 'sale' ? $model->paidAmount() : (($model->payment_status === 'paid') ? $model->grand_total : 0),
+            'paid' => $model->paidAmount(),
             'previous' => $previousBalance,
             'total_due' => $previousBalance + $model->grand_total,
-            'total_balance' => $previousBalance + ($model->grand_total - ($type === 'sale' ? $model->paidAmount() : (($model->payment_status === 'paid') ? $model->grand_total : 0))),
-            'remaining' => $type === 'sale' ? $model->remainingAmount() : (($model->payment_status === 'paid') ? 0 : $model->grand_total),
+            'total_balance' => $previousBalance + ($model->grand_total - $model->paidAmount()),
+            'remaining' => $model->remainingAmount(),
             'words' => \App\Services\ArabicAmountToWords::translate($model->grand_total, $model->currency),
             'notes' => $model->notes
         ]
@@ -515,7 +517,7 @@
                         <div class="type-header-inline">
                             <span class="data-type-label"></span> | <span class="data-type-ar"></span>
                         </div>
-                        <label>Invoice No:</label>
+                        <label class="lbl-invoice-no">Invoice No:</label>
                         <span class="data-no"></span>
                     </div>
                     <div class="info-item center-cell">
@@ -523,7 +525,7 @@
                         <span class="data-date"></span>
                     </div>
                     <div class="info-item customer-cell">
-                        <label>Customer:</label>
+                        <label class="lbl-customer">Customer:</label>
                         <span class="data-customer"></span>
                     </div>
                 </div>
@@ -609,11 +611,18 @@
                 const typeLabels = {
                     'invoice': { en: 'INVOICE', ar: 'فاتورة' },
                     'quotation': { en: 'QUOTATION', ar: 'عرض سعر' },
-                    'proforma': { en: 'PROFORMA', ar: 'فاتورة أولية' }
+                    'proforma': { en: 'PROFORMA', ar: 'فاتورة أولية' },
+                    'purchase': { en: 'PURCHASE INVOICE', ar: 'فاتورة شراء' }
                 };
                 const currentType = data.type_raw || 'invoice';
                 page.querySelector('.data-type-label').textContent = typeLabels[currentType]?.en || 'INVOICE';
                 page.querySelector('.data-type-ar').textContent = typeLabels[currentType]?.ar || 'فاتورة';
+
+                // Change labels if purchase
+                if (currentType === 'purchase') {
+                    page.querySelector('.lbl-invoice-no').textContent = 'Purchase No:';
+                    page.querySelector('.lbl-customer').textContent = 'Supplier:';
+                }
 
                 // Fill Items
                 const tbody = page.querySelector('.data-items');

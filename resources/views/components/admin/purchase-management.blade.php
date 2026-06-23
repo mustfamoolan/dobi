@@ -34,6 +34,7 @@ new class extends Component {
     public $financial_account_id;
     public $items = []; // [{product_id, name, qty, cost, subtotal}]
     public $viewingPurchase = null;
+    public $viewingPreviousBalance = 0;
 
     // Payment Modal Fields
     public $selectedPurchaseId;
@@ -400,6 +401,7 @@ new class extends Component {
     public function viewPurchase($id)
     {
         $this->viewingPurchase = Purchase::with(['supplier', 'items.product', 'creator'])->findOrFail($id);
+        $this->viewingPreviousBalance = $this->viewingPurchase->supplier->getBalanceBeforePurchase($this->viewingPurchase->id, $this->viewingPurchase->currency);
         $this->dispatch('open-view-modal');
     }
 
@@ -862,20 +864,26 @@ new class extends Component {
                 <div class="modal-body p-0">
                     <style>
                         .invoice-preview-container {
-                            background: #f0f2f5;
-                            padding: 2mm;
+                            --print-top: 90mm;
+                            --print-left: 12mm;
+                            --print-width: 186mm;
+                            --print-height: 185mm;
+                            --row-height: 8mm;
+                            background: #f0f0f0;
+                            padding: 20px;
                             display: flex;
                             justify-content: center;
-                            min-height: 80vh;
+                            max-height: 80vh;
+                            overflow-y: auto;
                         }
 
                         .preview-page {
                             width: 210mm;
-                            height: 297mm;
-                            background: white;
+                            min-height: 297mm;
+                            background-color: white;
                             position: relative;
-                            box-shadow: 0 0 20px rgba(0,0,0,0.1);
                             overflow: hidden;
+                            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
                         }
 
                         .preview-background {
@@ -884,70 +892,87 @@ new class extends Component {
                             left: 0;
                             width: 100%;
                             height: 100%;
-                            object-fit: fill;
                             z-index: 1;
+                            object-fit: fill;
                         }
 
                         .preview-print-area {
                             position: absolute;
-                            top: 90mm;
-                            left: 12mm;
-                            width: 186mm;
-                            height: 185mm;
+                            top: var(--print-top);
+                            left: var(--print-left);
+                            width: var(--print-width);
+                            height: var(--print-height);
+                            display: flex;
+                            flex-direction: column;
+                            font-family: 'Tahoma', sans-serif;
                             z-index: 2;
                         }
 
                         .preview-info-grid {
                             display: grid;
-                            grid-template-columns: 1.2fr 1fr 1fr;
-                            grid-template-rows: auto auto;
-                            gap: 2mm 3mm;
-                            margin-bottom: 3mm;
-                            font-weight: bold;
+                            grid-template-columns: 1fr 1fr 1.5fr;
+                            gap: 2mm;
+                            margin-bottom: 0.5mm;
                             color: #32267d;
                             border: 1px solid #b0a8d8;
                             background: #f3f1fb;
-                            padding: 2.5mm;
-                            border-radius: 1mm;
-                            align-items: center;
-                            font-size: 10pt;
+                            padding: 0.5mm 3mm;
+                            border-radius: 1.2mm;
+                            align-items: stretch;
                             direction: rtl;
+                        }
+
+                        .preview-type-header-inline {
+                            font-size: 9pt;
+                            font-weight: bold;
+                            color: #32267d;
+                            border-bottom: 1px solid #32267d;
+                            margin-bottom: 1.5mm;
+                            padding-bottom: 0.5mm;
+                            display: inline-block;
+                            white-space: nowrap;
                         }
 
                         .preview-info-item {
                             display: flex;
-                            gap: 1.5mm;
+                            flex-direction: column;
+                            gap: 0mm;
+                            text-align: left;
+                            justify-content: center;
+                            height: 100%;
+                        }
+
+                        .preview-info-item.center-cell {
+                            text-align: center;
                             align-items: center;
                         }
 
-                        .preview-info-item.id-cell {
-                            font-size: 16pt;
-                            font-weight: 400;
-                        }
-
-                        .preview-info-item.type-cell {
-                            justify-content: center;
-                            font-size: 11pt;
+                        .preview-info-item.customer-cell {
+                            text-align: right;
+                            align-items: flex-end;
+                            direction: rtl;
                         }
 
                         .preview-info-item label {
-                            white-space: nowrap;
                             color: #7a6fb0;
-                            font-size: 8pt;
+                            font-size: 7pt;
+                            font-weight: bold;
+                            text-transform: uppercase;
+                            direction: ltr;
+                            display: inline-block;
                         }
 
                         .preview-info-item span {
                             color: #32267d;
-                            font-weight: 900;
-                            unicode-bidi: plaintext;
-                            text-align: right;
+                            font-weight: 800;
+                            font-size: 9.5pt;
                         }
 
                         .preview-table {
                             width: 100%;
                             border-collapse: collapse;
                             table-layout: fixed;
-                            margin-top: 1mm;
+                            margin-top: 0mm;
                             direction: rtl;
                         }
 
@@ -964,7 +989,7 @@ new class extends Component {
                             border-right: 1px solid #b0a8d8;
                             border-left: 1px solid #b0a8d8;
                             padding: 0.5mm 1.5mm;
-                            height: 9mm;
+                            height: var(--row-height);
                             vertical-align: middle;
                             font-size: 9pt;
                             color: #32267d;
@@ -987,9 +1012,9 @@ new class extends Component {
                         .preview-col-total { width: 32mm; }
 
                         .preview-summary-grid {
-                            margin-top: 5mm;
+                            margin-top: 1mm;
                             display: grid;
-                            grid-template-columns: repeat(5, 1fr);
+                            grid-template-columns: 1fr 1fr 1fr 1fr 1.2fr;
                             border: 1px solid #32267d;
                             font-size: 8.5pt;
                             direction: rtl;
@@ -997,27 +1022,47 @@ new class extends Component {
 
                         .preview-summary-cell {
                             border-left: 1px solid #b0a8d8;
-                            padding: 1.5mm 1mm;
+                            padding: 0.8mm 1mm;
                             text-align: center;
                             display: flex;
                             flex-direction: column;
-                            gap: 1mm;
+                            gap: 0.2mm;
+                            justify-content: center;
+                            align-items: center;
                         }
 
                         .preview-summary-cell:last-child {
                             border-left: none;
                         }
 
+                        .preview-summary-cell.highlight-cell {
+                            background: #e3e8f8;
+                        }
+
+                        .preview-summary-cell.highlight-cell .preview-summary-value {
+                            font-size: 11pt;
+                        }
+
+                        .preview-summary-label-row {
+                            display: flex;
+                            align-items: center;
+                            gap: 1.5mm;
+                            color: #32267d;
+                            border-bottom: 0.5px solid #b0a8d8;
+                            padding-bottom: 0.2mm;
+                            width: 100%;
+                            justify-content: center;
+                        }
+
                         .preview-summary-label {
                             font-weight: bold;
                             color: #32267d;
-                            border-bottom: 0.5px solid #b0a8d8;
-                            padding-bottom: 1mm;
                         }
 
                         .preview-summary-value {
                             font-weight: 800;
                             color: #32267d;
+                            font-size: 9.5pt;
                         }
 
                         .preview-total-in-words {
@@ -1031,7 +1076,7 @@ new class extends Component {
                         }
 
                         .preview-notes-container {
-                            margin-top: 4mm;
+                            margin-top: 1mm;
                             border: 1px solid #32267d;
                             border-radius: 1mm;
                             padding: 2mm;
@@ -1045,23 +1090,27 @@ new class extends Component {
                         @if($viewingPurchase)
                             @php
                                 $currencySymbol = $viewingPurchase->currency === 'USD' ? '$' : 'د.ع';
+                                $formattedPurchaseId = 'PUR-' . str_pad($viewingPurchase->id, 3, '0', STR_PAD_LEFT);
                             @endphp
                             <div class="preview-page">
                                 <img src="{{ asset('assets/images/invois.png') }}" class="preview-background" alt="Invoice Background">
                                 <div class="preview-print-area">
-                                    <div class="preview-info-grid">
-                                        @php
-                                            $formattedPurchaseId = 'PUR-' . str_pad($viewingPurchase->id, 3, '0', STR_PAD_LEFT);
-                                        @endphp
-                                        <!-- Row 1 (Right to Left) -->
-                                        <div class="preview-info-item" style="justify-content: flex-start;"><label>الاسم:</label> <span>{{ $viewingPurchase->supplier->name }}</span></div>
-                                        <div class="preview-info-item" style="justify-content: center;"><label>العنوان:</label> <span>{{ $viewingPurchase->supplier->address }}</span></div>
-                                        <div class="preview-info-item id-cell" style="justify-content: flex-end;"><span>{{ $formattedPurchaseId }}</span></div>
-                                        
-                                        <!-- Row 2 (Right to Left) -->
-                                        <div class="preview-info-item" style="justify-content: flex-start;"><label>الهاتف:</label> <span>{{ $viewingPurchase->supplier->phone }}</span></div>
-                                        <div class="preview-info-item type-cell"><span>{{ __('Purchase Invoice') }}</span></div>
-                                        <div class="preview-info-item" style="justify-content: flex-end;"><label>التاريخ:</label> <span>{{ $viewingPurchase->date }}</span></div>
+                                    <div class="preview-info-grid" style="direction: ltr !important; display: flex !important; justify-content: space-between !important; gap: 2mm !important;">
+                                        <div class="preview-info-item">
+                                            <div class="preview-type-header-inline">
+                                                PURCHASE INVOICE | فاتورة شراء
+                                            </div>
+                                            <label>Purchase No:</label>
+                                            <span>{{ $formattedPurchaseId }}</span>
+                                        </div>
+                                        <div class="preview-info-item center-cell">
+                                            <label>Date:</label>
+                                            <span>{{ $viewingPurchase->date }}</span>
+                                        </div>
+                                        <div class="preview-info-item customer-cell">
+                                            <label>Supplier:</label>
+                                            <span>{{ $viewingPurchase->supplier->name }}</span>
+                                        </div>
                                     </div>
 
                                     <table class="preview-table">
@@ -1105,23 +1154,33 @@ new class extends Component {
 
                                     <div class="preview-summary-grid">
                                         <div class="preview-summary-cell">
-                                            <span class="preview-summary-label">المجموع</span>
-                                            <span class="preview-summary-value">{{ number_format($viewingPurchase->total, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                            <div class="preview-summary-label-row">
+                                                <span class="preview-summary-label">الرصيد الحالي</span>
+                                            </div>
+                                            <span class="preview-summary-value">{{ number_format($viewingPreviousBalance + ($viewingPurchase->grand_total - $viewingPurchase->paidAmount()), $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-summary-cell">
-                                            <span class="preview-summary-label">الخصم</span>
-                                            <span class="preview-summary-value">{{ number_format($viewingPurchase->discount, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                            <div class="preview-summary-label-row">
+                                                <span class="preview-summary-label">الرصيد السابق</span>
+                                            </div>
+                                            <span class="preview-summary-value">{{ number_format($viewingPreviousBalance, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-summary-cell">
-                                            <span class="preview-summary-label">المبلغ الواصل</span>
-                                            <span class="preview-summary-value">{{ $viewingPurchase->payment_status === 'paid' ? number_format($viewingPurchase->grand_total, $viewingPurchase->currency === 'USD' ? 2 : 0) . ' ' . $currencySymbol : '0' }}</span>
+                                            <div class="preview-summary-label-row">
+                                                <span class="preview-summary-label">المبلغ الواصل</span>
+                                            </div>
+                                            <span class="preview-summary-value">{{ number_format($viewingPurchase->paidAmount(), $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-summary-cell">
-                                            <span class="preview-summary-label">الضريبة</span>
-                                            <span class="preview-summary-value">{{ number_format($viewingPurchase->tax ?? 0, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
+                                            <div class="preview-summary-label-row">
+                                                <span class="preview-summary-label">الخصم</span>
+                                            </div>
+                                            <span class="preview-summary-value">{{ number_format($viewingPurchase->discount ?? 0, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
-                                        <div class="preview-summary-cell">
-                                            <span class="preview-summary-label">الرصيد الكلي</span>
+                                        <div class="preview-summary-cell highlight-cell">
+                                            <div class="preview-summary-label-row">
+                                                <span class="preview-summary-label">المبلغ الإجمالي</span>
+                                            </div>
                                             <span class="preview-summary-value">{{ number_format($viewingPurchase->grand_total, $viewingPurchase->currency === 'USD' ? 2 : 0) }} {{ $currencySymbol }}</span>
                                         </div>
                                         <div class="preview-total-in-words">

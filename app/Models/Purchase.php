@@ -42,6 +42,20 @@ class Purchase extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function paidAmount()
+    {
+        return SupplierLedger::where('ref_type', 'purchase')
+            ->where('ref_id', $this->id)
+            ->where('type', 'payment')
+            ->where('supplier_id', $this->supplier_id)
+            ->sum('debit');
+    }
+
+    public function remainingAmount()
+    {
+        return max(0, $this->grand_total - $this->paidAmount());
+    }
+
     public function updater()
     {
         return $this->belongsTo(User::class, 'updated_by');

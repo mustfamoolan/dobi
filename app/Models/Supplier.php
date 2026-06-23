@@ -48,6 +48,34 @@ class Supplier extends Model
             ->first()->balance ?? 0;
     }
 
+    public function getBalanceBeforePurchase($purchaseId, $currency = 'IQD')
+    {
+        $purchaseEntry = SupplierLedger::where('supplier_id', $this->id)
+            ->where('currency', $currency)
+            ->where('ref_type', 'purchase')
+            ->where('ref_id', $purchaseId)
+            ->first();
+
+        if (!$purchaseEntry) {
+            return SupplierLedger::where('supplier_id', $this->id)
+                ->where('currency', $currency)
+                ->selectRaw('SUM(credit) - SUM(debit) as balance')
+                ->first()->balance ?? 0;
+        }
+
+        return SupplierLedger::where('supplier_id', $this->id)
+            ->where('currency', $currency)
+            ->where(function ($q) use ($purchaseEntry) {
+                $q->where('date', '<', $purchaseEntry->date)
+                    ->orWhere(function ($q2) use ($purchaseEntry) {
+                        $q2->where('date', '=', $purchaseEntry->date)
+                            ->where('id', '<', $purchaseEntry->id);
+                    });
+            })
+            ->selectRaw('SUM(credit) - SUM(debit) as balance')
+            ->first()->balance ?? 0;
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
