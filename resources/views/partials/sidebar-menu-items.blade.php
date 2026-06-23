@@ -85,6 +85,12 @@
         </a>
     </li>
     <li class="slide">
+        <a href="{{ route('admin.debts.index') }}" class="side-menu__item" role="menuitem">
+            <span class="side_menu_icon"><i class="ri-hand-coin-line"></i></span>
+            <span class="side-menu__label">{{ __('Debts') }}</span>
+        </a>
+    </li>
+    <li class="slide">
         <a href="{{ route('admin.accounts.index') }}" class="side-menu__item" role="menuitem">
             <span class="side_menu_icon"><i class="ri-safe-2-line"></i></span>
             <span class="side-menu__label">{{ __('Financial Treasuries') }}</span>

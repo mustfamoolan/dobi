@@ -685,6 +685,35 @@ new class extends Component {
         </div>
     </div>
 
+<style>
+    .sortable-ghost .card {
+        background-color: rgba(50, 38, 125, 0.03) !important;
+        border: 2px dashed #32267d !important;
+        box-shadow: none !important;
+        transform: none !important;
+        height: 100% !important;
+        min-height: 160px;
+    }
+    
+    .sortable-ghost .card * {
+        visibility: hidden !important;
+    }
+    
+    .sortable-chosen .card {
+        box-shadow: 0 15px 30px rgba(50, 38, 125, 0.15) !important;
+        border: 1.5px solid #32267d !important;
+        transform: translateY(-5px);
+    }
+
+    .sortable-drag .card {
+        opacity: 0.95 !important;
+        box-shadow: 0 20px 40px rgba(50, 38, 125, 0.2) !important;
+        border: 2px solid #32267d !important;
+        transform: rotate(2deg) scale(1.02);
+        cursor: grabbing !important;
+    }
+</style>
+
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 @script
 <script>
@@ -696,7 +725,11 @@ new class extends Component {
             }
             container._sortable = new Sortable(container, {
                 animation: 150,
+                draggable: '.sortable-card',
                 filter: '.static-card',
+                ghostClass: 'sortable-ghost',
+                chosenClass: 'sortable-chosen',
+                dragClass: 'sortable-drag',
                 onEnd: function (evt) {
                     let orderedIds = [];
                     container.querySelectorAll('.sortable-card').forEach(function(el) {

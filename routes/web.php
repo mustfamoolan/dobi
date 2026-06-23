@@ -77,6 +77,9 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
     Route::get('/vouchers', function () {
         return view('admin.vouchers');
     })->name('vouchers.index');
+    Route::get('/debts', function () {
+        return view('admin.debts');
+    })->name('debts.index');
     Route::get('/settings/exchange-rate', function () {
         return view('admin.exchange-rate');
     })->name('settings.exchange-rate');
