@@ -146,11 +146,18 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         return view('admin.activity-log');
     })->name('activity-log.index');
 
-    Route::get('/test-ledger', function() {
-        $supplier = \App\Models\Supplier::where('name', 'like', '%الشاملي%')->first();
-        if (!$supplier) {
-            return "Supplier not found. Available suppliers: " . \App\Models\Supplier::pluck('name')->implode(', ');
+    Route::get('/test-ledger/{id?}', function($id = null) {
+        if (!$id) {
+            $suppliers = \App\Models\Supplier::all();
+            $output = "<h3>Select a Supplier to inspect:</h3><ul>";
+            foreach ($suppliers as $s) {
+                $output .= "<li><a href='" . route('admin.test-ledger', $s->id) . "'>ID: {$s->id} | {$s->name}</a></li>";
+            }
+            $output .= "</ul>";
+            return $output;
         }
+
+        $supplier = \App\Models\Supplier::findOrFail($id);
         $entries = \App\Models\SupplierLedger::where('supplier_id', $supplier->id)
             ->orderBy('date', 'asc')
             ->orderBy('id', 'asc')
