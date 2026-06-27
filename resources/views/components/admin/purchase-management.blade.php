@@ -440,6 +440,11 @@ new class extends Component {
         $this->notes = $purchase->notes;
         $this->payment_status = $purchase->payment_status;
         
+        $paymentEntry = \App\Models\AccountLedger::where('ref_type', 'purchase')
+            ->where('ref_id', $id)
+            ->first();
+        $this->financial_account_id = $paymentEntry ? $paymentEntry->account_id : '';
+        
         $this->items = [];
         foreach ($purchase->items as $item) {
             $this->items[] = [

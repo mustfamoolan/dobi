@@ -67,9 +67,17 @@ class Supplier extends Model
                 ->first()->balance ?? 0;
         }
 
+        $purchaseDate = \Carbon\Carbon::parse($purchaseEntry->date)->format('Y-m-d');
+
         return SupplierLedger::where('supplier_id', $this->id)
             ->where('currency', $currency)
-            ->where('id', '<', $purchaseEntry->id)
+            ->where(function ($q) use ($purchaseDate, $purchaseEntry) {
+                $q->where('date', '<', $purchaseDate)
+                    ->orWhere(function ($q2) use ($purchaseDate, $purchaseEntry) {
+                        $q2->where('date', '=', $purchaseDate)
+                            ->where('id', '<', $purchaseEntry->id);
+                    });
+            })
             ->selectRaw('SUM(credit) - SUM(debit) as balance')
             ->first()->balance ?? 0;
     }

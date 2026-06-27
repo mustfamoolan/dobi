@@ -80,9 +80,17 @@ class Customer extends Model
                 ->first()->balance ?? 0;
         }
 
+        $saleDate = \Carbon\Carbon::parse($saleEntry->date)->format('Y-m-d');
+
         return CustomerLedger::where('customer_id', $this->id)
             ->where('currency', $currency)
-            ->where('id', '<', $saleEntry->id)
+            ->where(function ($q) use ($saleDate, $saleEntry) {
+                $q->where('date', '<', $saleDate)
+                    ->orWhere(function ($q2) use ($saleDate, $saleEntry) {
+                        $q2->where('date', '=', $saleDate)
+                            ->where('id', '<', $saleEntry->id);
+                    });
+            })
             ->selectRaw('SUM(debit) - SUM(credit) as balance')
             ->first()->balance ?? 0;
     }
