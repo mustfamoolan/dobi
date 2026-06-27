@@ -51,7 +51,6 @@ class Supplier extends Model
     public function getBalanceBeforePurchase($purchaseId, $currency = 'IQD')
     {
         $purchaseEntry = SupplierLedger::where('supplier_id', $this->id)
-            ->where('currency', $currency)
             ->where('ref_type', 'purchase')
             ->where('ref_id', $purchaseId)
             ->first();
@@ -59,19 +58,18 @@ class Supplier extends Model
         if (!$purchaseEntry) {
             return SupplierLedger::where('supplier_id', $this->id)
                 ->where('currency', $currency)
+                ->where(function ($q) use ($purchaseId) {
+                    $q->where('ref_type', '!=', 'purchase')
+                      ->orWhere('ref_id', '!=', $purchaseId)
+                      ->orWhereNull('ref_id');
+                })
                 ->selectRaw('SUM(credit) - SUM(debit) as balance')
                 ->first()->balance ?? 0;
         }
 
         return SupplierLedger::where('supplier_id', $this->id)
             ->where('currency', $currency)
-            ->where(function ($q) use ($purchaseEntry) {
-                $q->where('date', '<', $purchaseEntry->date)
-                    ->orWhere(function ($q2) use ($purchaseEntry) {
-                        $q2->where('date', '=', $purchaseEntry->date)
-                            ->where('id', '<', $purchaseEntry->id);
-                    });
-            })
+            ->where('id', '<', $purchaseEntry->id)
             ->selectRaw('SUM(credit) - SUM(debit) as balance')
             ->first()->balance ?? 0;
     }
