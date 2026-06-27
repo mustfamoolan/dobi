@@ -408,5 +408,11 @@
     "No unpaid invoices. All debts may be from opening balances.": "لا توجد فواتير غير مدفوعة. قد تكون كافة الديون من أرصدة افتتاحية.",
     "No transactions found.": "لم يتم العثور على حركات مالية.",
     "Select a Customer": "اختر عميلاً",
-    "Please select a customer from the left list to view their detailed outstanding debt statement and unpaid invoices.": "يرجى اختيار عميل من القائمة اليسرى لعرض كشف ديونه التفصيلي وفواتيره غير المدفوعة."
+    "Please select a customer from the left list to view their detailed outstanding debt statement and unpaid invoices.": "يرجى اختيار عميل من القائمة اليسرى لعرض كشف ديونه التفصيلي وفواتيره غير المدفوعة.",
+    "Please select a warehouse first...": "الرجاء اختيار المخزن أولاً...",
+    "Please select a warehouse first": "الرجاء اختيار المخزن أولاً",
+    "Search and select product...": "البحث واختيار منتج...",
+    "No Stock": "لا يوجد مخزون",
+    "The selected treasury currency does not match the purchase currency.": "عملة الصندوق المحدد لا تطابق عملة المشتريات.",
+    "The selected treasury currency does not match the payment currency.": "عملة الصندوق المحدد لا تطابق عملة الدفع."
 }

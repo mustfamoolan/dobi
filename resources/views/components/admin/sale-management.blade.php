@@ -96,6 +96,11 @@ new class extends Component {
         $this->dispatch('open-sale-modal');
     }
 
+    public function updatedWarehouseId($value)
+    {
+        $this->reset(['selected_product_id', 'item_qty', 'item_price', 'last_customer_price', 'last_other_price', 'last_customer_currency', 'last_other_currency']);
+    }
+
     public function updatedCustomerId()
     {
         if ($this->selected_product_id) {
@@ -994,9 +999,19 @@ new class extends Component {
 
         $customers = Customer::all();
         $employees = Employee::where('is_active', true)->get();
-        $products = Product::where('is_active', true)->get();
-
         $warehouses = Warehouse::all();
+
+        $products = Product::where('is_active', true)->get();
+        if ($this->warehouse_id) {
+            $products = $products->map(function($p) {
+                $p->warehouse_stock = $p->currentStock($this->warehouse_id);
+                return $p;
+            })->filter(function($p) {
+                return $p->warehouse_stock > 0;
+            })->values();
+        } else {
+            $products = collect();
+        }
 
         return view('components.admin.sale-management', [
             'sales' => $sales,
@@ -1232,25 +1247,31 @@ new class extends Component {
                                         <label class="form-label">{{ __('Product') }}</label>
                                         {{-- Searchable Product Picker --}}
                                         <div class="product-search-wrapper" id="saleProductWrapper" style="position:relative;">
-                                            <div class="input-group">
+                                            <div class="input-group input-group-lg shadow-sm border rounded">
+                                                <span class="input-group-text bg-light border-0 text-muted">
+                                                    <i class="ri-search-2-line fs-18"></i>
+                                                </span>
                                                 <input type="text"
                                                     id="saleProductSearchInput"
-                                                    class="form-control"
-                                                    placeholder="{{ __('Search product...') }}"
+                                                    class="form-control border-0 py-2 fs-15 {{ $warehouse_id ? 'bg-white' : 'bg-light text-muted' }}"
+                                                    placeholder="{{ $warehouse_id ? __('Search product...') : __('Please select a warehouse first...') }}"
                                                     autocomplete="off"
                                                     onkeyup="filterSaleProducts(this.value)"
                                                     onfocus="showSaleProductList()"
+                                                    {{ $warehouse_id ? '' : 'disabled' }}
                                                 >
-                                                <button class="btn btn-outline-secondary" type="button" onclick="clearSaleProduct()" title="{{ __('Clear') }}">
-                                                    <i class="ri-close-line"></i>
-                                                </button>
+                                                @if($warehouse_id)
+                                                    <button class="btn btn-white border-0" type="button" onclick="clearSaleProduct()" title="{{ __('Clear') }}">
+                                                        <i class="ri-close-line text-danger fs-18"></i>
+                                                    </button>
+                                                @endif
                                             </div>
                                             <div id="saleProductDropdown"
-                                                style="display:none; position:absolute; z-index:9999; width:100%; max-height:220px; overflow-y:auto; background:#fff; border:1px solid #ced4da; border-radius:0.375rem; box-shadow:0 4px 16px rgba(0,0,0,0.12);">
+                                                style="display:none; position:absolute; z-index:9999; width:100%; max-height:280px; overflow-y:auto; background:#fff; border:1px solid #dcdfe6; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.08); margin-top: 4px;">
                                             </div>
                                         </div>
                                         {{-- Hidden products data for JS --}}
-                                        <div id="saleProductsData" style="display:none;">@json($products->map(function($p) { return ['id'=>$p->id, 'name'=>$p->name, 'stock'=>$p->stock]; }))</div>
+                                        <div id="saleProductsData" style="display:none;">@json($products->map(function($p) { return ['id'=>$p->id, 'name'=>$p->name, 'stock'=>$p->warehouse_stock ?? 0]; }))</div>
                                         {{-- Price hints from Livewire --}}
                                         @if($last_customer_price !== null || $last_other_price !== null)
                                             <div class="mt-1 d-flex gap-2 flex-wrap">
@@ -1904,7 +1925,7 @@ new class extends Component {
         }
 
         window.filterSaleProducts = function(query) {
-            if (!_saleAllProducts.length) _saleLoadProducts();
+            _saleLoadProducts();
             var dd = document.getElementById('saleProductDropdown');
             if (!dd) return;
             var q = query.trim().toLowerCase();
@@ -1914,7 +1935,7 @@ new class extends Component {
         }
 
         window.showSaleProductList = function() {
-            if (!_saleAllProducts.length) _saleLoadProducts();
+            _saleLoadProducts();
             var dd = document.getElementById('saleProductDropdown');
             if (!dd) return;
             var inp = document.getElementById('saleProductSearchInput');
@@ -1928,16 +1949,19 @@ new class extends Component {
             var dd = document.getElementById('saleProductDropdown');
             if (!dd) return;
             if (!items.length) {
-                dd.innerHTML = '<div style="padding:10px 14px;color:#888;">{{ __('No products found') }}</div>';
+                dd.innerHTML = '<div style="padding:12px 16px;color:#888;font-size:14px;text-align:center;">{{ __('No products found') }}</div>';
                 return;
             }
             dd.innerHTML = items.map(function(p) {
                 var isSelected = (p.id == _saleSelectedId);
+                var stockBadge = p.stock > 0 
+                    ? '<span class="badge bg-success-subtle text-success border border-success-subtle py-1 px-2 fs-12">' + '{{ __('Stock') }}: ' + p.stock + '</span>' 
+                    : '<span class="badge bg-danger-subtle text-danger border border-danger-subtle py-1 px-2 fs-12">' + '{{ __('Out of Stock') }}' + '</span>';
                 return '<div onclick="selectSaleProduct(' + p.id + ', \'' + p.name.replace(/'/g, "\\'") + '\')" ' +
-                    'style="padding:9px 14px;cursor:pointer;font-size:14px;' + (isSelected ? 'background:#e8f4ff;font-weight:600;' : '') + '" ' +
-                    'onmouseover="this.style.background=\'#f0f6ff\'" onmouseout="this.style.background=\'' + (isSelected?'#e8f4ff':'#fff') + '\'">' +
-                    '<span>' + p.name + '</span>' +
-                    '<small style="float:right;color:#888;">{{ __('Stock') }}: ' + p.stock + '</small>' +
+                    'style="padding: 12px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f3f7; transition: background 0.15s ease;' + (isSelected ? 'background:#e8f4ff; font-weight:600;' : '') + '" ' +
+                    'onmouseover="this.style.background=\'#f6f8fb\'" onmouseout="this.style.background=\'' + (isSelected?'#e8f4ff':'#fff') + '\'">' +
+                    '<span style="font-size: 15px; color: #32267d; font-weight: 500;">' + p.name + '</span>' +
+                    stockBadge +
                     '</div>';
             }).join('');
         }

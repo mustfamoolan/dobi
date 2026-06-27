@@ -78,6 +78,11 @@ new class extends Component {
         $this->dispatch('open-purchase-modal');
     }
 
+    public function updatedWarehouseId($value)
+    {
+        $this->reset(['selected_product_id', 'item_qty', 'item_cost']);
+    }
+
     public function updatedSelectedProductId($id)
     {
         if ($id) {
@@ -148,7 +153,16 @@ new class extends Component {
             'financial_account_id' => 'required_if:payment_status,paid',
         ]);
 
+        if ($this->payment_status === 'paid' && $this->financial_account_id) {
+            $account = \App\Models\FinancialAccount::find($this->financial_account_id);
+            if (!$account || $account->currency !== $this->currency) {
+                $this->addError('financial_account_id', __('The selected treasury currency does not match the purchase currency.'));
+                return;
+            }
+        }
+
         try {
+            DB::beginTransaction();
             $total = $this->total;
 
             if ($this->editingId) {
@@ -272,6 +286,8 @@ new class extends Component {
                 ]);
             }
 
+            $purchase->updatePaymentStatus();
+
             \App\Services\ActivityLogger::log(
                 $this->editingId ? 'updated' : 'purchase_created',
                 __('Purchase Invoice #:id from :supplier', [
@@ -310,12 +326,17 @@ new class extends Component {
     {
         $purchase = Purchase::findOrFail($id);
         $this->selectedPurchaseId = $id;
-        $this->paymentTotal = $purchase->grand_total;
-        $this->paymentAmount = $purchase->grand_total;
+        
+        $unpaid = $purchase->remainingAmount();
+        $this->paymentTotal = $unpaid;
+        $this->paymentAmount = $unpaid;
         $this->remainingAmount = 0;
+        
         $this->paymentCurrency = $purchase->currency;
         $this->paymentExchangeRate = $purchase->exchange_rate;
-        $this->paymentAccountId = \App\Models\FinancialAccount::where('is_active', true)->first()?->id;
+        $this->paymentAccountId = \App\Models\FinancialAccount::where('is_active', true)
+            ->where('currency', $purchase->currency)
+            ->first()?->id ?? '';
         $this->dispatch('open-payment-modal');
     }
 
@@ -328,16 +349,20 @@ new class extends Component {
     {
         $this->validate([
             'paymentAccountId' => 'required|exists:financial_accounts,id',
-            'paymentAmount' => 'required|numeric|min:0',
+            'paymentAmount' => 'required|numeric|min:0.01|max:' . $this->paymentTotal,
         ]);
 
         $purchase = Purchase::findOrFail($this->selectedPurchaseId);
+        $account = \App\Models\FinancialAccount::findOrFail($this->paymentAccountId);
+
+        if ($account->currency !== $this->paymentCurrency) {
+            $this->addError('paymentAccountId', __('The selected treasury currency does not match the payment currency.'));
+            return;
+        }
 
         try {
             DB::beginTransaction();
 
-            $account = \App\Models\FinancialAccount::findOrFail($this->paymentAccountId);
-            
             // 1. Create Supplier Ledger Entry (Debit)
             SupplierLedger::create([
                 'supplier_id' => $purchase->supplier_id,
@@ -369,10 +394,8 @@ new class extends Component {
             
             $account->decrement('current_balance', $this->paymentAmount);
 
-            // 3. Update Purchase status if fully paid
-            if ($this->remainingAmount <= 0) {
-                $purchase->update(['payment_status' => 'paid']);
-            }
+            // 3. Update Purchase status dynamically
+            $purchase->updatePaymentStatus();
 
             \App\Services\ActivityLogger::log(
                 'updated',
@@ -500,8 +523,17 @@ new class extends Component {
             ->paginate(10);
 
         $suppliers = Supplier::all();
-        $products = Product::where('is_active', true)->get();
         $warehouses = \App\Models\Warehouse::where('is_active', true)->get();
+
+        $products = Product::where('is_active', true)->get();
+        if ($this->warehouse_id) {
+            $products = $products->map(function($p) {
+                $p->warehouse_stock = $p->currentStock($this->warehouse_id);
+                return $p;
+            })->values();
+        } else {
+            $products = collect();
+        }
 
         return view('components.admin.purchase-management', [
             'purchases' => $purchases,
@@ -562,7 +594,7 @@ new class extends Component {
                                 </td>
                                 <td>
                                     <span
-                                        class="badge {{ $purchase->payment_status == 'paid' ? 'bg-success' : 'bg-warning' }}">
+                                        class="badge {{ $purchase->payment_status === 'paid' ? 'bg-success' : ($purchase->payment_status === 'partial' ? 'bg-info' : 'bg-warning') }}">
                                         {{ __($purchase->payment_status) }}
                                     </span>
                                 </td>
@@ -636,7 +668,7 @@ new class extends Component {
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">{{ __('Warehouse') }}</label>
-                                <select wire:model="warehouse_id"
+                                <select wire:model.live="warehouse_id"
                                     class="form-select @error('warehouse_id') is-invalid @enderror">
                                     <option value="">{{ __('Select Warehouse') }}</option>
                                     @foreach($warehouses as $warehouse)
@@ -667,7 +699,8 @@ new class extends Component {
                             <div class="col-md-3">
                                 <label class="form-label">{{ __('Pay from Treasury') }}</label>
                                 <select wire:model="financial_account_id" class="form-select @error('financial_account_id') is-invalid @enderror">
-                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->get() as $fa)
+                                    <option value="">{{ __('Select Treasury') }}</option>
+                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->where('currency', $currency)->get() as $fa)
                                         <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
                                     @endforeach
                                 </select>
@@ -684,25 +717,31 @@ new class extends Component {
                                         <label class="form-label">{{ __('Product') }}</label>
                                         {{-- Searchable Product Picker --}}
                                         <div class="product-search-wrapper" id="purchProductWrapper" style="position:relative;">
-                                            <div class="input-group">
+                                            <div class="input-group input-group-lg shadow-sm border rounded">
+                                                <span class="input-group-text bg-light border-0 text-muted">
+                                                    <i class="ri-search-2-line fs-18"></i>
+                                                </span>
                                                 <input type="text"
                                                     id="purchProductSearchInput"
-                                                    class="form-control"
-                                                    placeholder="{{ __('Search product...') }}"
+                                                    class="form-control border-0 py-2 fs-15 {{ $warehouse_id ? 'bg-white' : 'bg-light text-muted' }}"
+                                                    placeholder="{{ $warehouse_id ? __('Search product...') : __('Please select a warehouse first...') }}"
                                                     autocomplete="off"
                                                     onkeyup="filterPurchProducts(this.value)"
                                                     onfocus="showPurchProductList()"
+                                                    {{ $warehouse_id ? '' : 'disabled' }}
                                                 >
-                                                <button class="btn btn-outline-secondary" type="button" onclick="clearPurchProduct()" title="{{ __('Clear') }}">
-                                                    <i class="ri-close-line"></i>
-                                                </button>
+                                                @if($warehouse_id)
+                                                    <button class="btn btn-white border-0" type="button" onclick="clearPurchProduct()" title="{{ __('Clear') }}">
+                                                        <i class="ri-close-line text-danger fs-18"></i>
+                                                    </button>
+                                                @endif
                                             </div>
                                             <div id="purchProductDropdown"
-                                                style="display:none; position:absolute; z-index:9999; width:100%; max-height:220px; overflow-y:auto; background:#fff; border:1px solid #ced4da; border-radius:0.375rem; box-shadow:0 4px 16px rgba(0,0,0,0.12);">
+                                                style="display:none; position:absolute; z-index:9999; width:100%; max-height:280px; overflow-y:auto; background:#fff; border:1px solid #dcdfe6; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.08); margin-top: 4px;">
                                             </div>
                                         </div>
                                         {{-- Hidden products data for JS --}}
-                                        <div id="purchProductsData" style="display:none;">@json($products->map(function($p) { return ['id'=>$p->id, 'name'=>$p->name]; }))</div>
+                                        <div id="purchProductsData" style="display:none;">@json($products->map(function($p) { return ['id'=>$p->id, 'name'=>$p->name, 'stock'=>$p->warehouse_stock ?? 0]; }))</div>
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label">{{ __('Qty') }}</label>
@@ -808,7 +847,7 @@ new class extends Component {
                                 <label class="form-label">{{ __('Pay from Treasury') }}</label>
                                 <select wire:model="paymentAccountId" class="form-select @error('paymentAccountId') is-invalid @enderror">
                                     <option value="">{{ __('Select Treasury') }}</option>
-                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->get() as $fa)
+                                    @foreach(\App\Models\FinancialAccount::where('is_active', true)->where('currency', $paymentCurrency)->get() as $fa)
                                         <option value="{{ $fa->id }}">{{ $fa->name }} ({{ $fa->currency }})</option>
                                     @endforeach
                                 </select>
@@ -1276,7 +1315,7 @@ new class extends Component {
         }
 
         window.filterPurchProducts = function(query) {
-            if (!_purchAllProducts.length) _purchLoadProducts();
+            _purchLoadProducts();
             var dd = document.getElementById('purchProductDropdown');
             if (!dd) return;
             var q = query.trim().toLowerCase();
@@ -1286,7 +1325,7 @@ new class extends Component {
         }
 
         window.showPurchProductList = function() {
-            if (!_purchAllProducts.length) _purchLoadProducts();
+            _purchLoadProducts();
             var dd = document.getElementById('purchProductDropdown');
             if (!dd) return;
             var inp = document.getElementById('purchProductSearchInput');
@@ -1300,15 +1339,19 @@ new class extends Component {
             var dd = document.getElementById('purchProductDropdown');
             if (!dd) return;
             if (!items.length) {
-                dd.innerHTML = '<div style="padding:10px 14px;color:#888;">{{ __('No products found') }}</div>';
+                dd.innerHTML = '<div style="padding:12px 16px;color:#888;font-size:14px;text-align:center;">{{ __('No products found') }}</div>';
                 return;
             }
             dd.innerHTML = items.map(function(p) {
                 var isSelected = (p.id == _purchSelectedId);
+                var stockBadge = p.stock > 0 
+                    ? '<span class="badge bg-info-subtle text-info border border-info-subtle py-1 px-2 fs-12">' + '{{ __('Stock') }}: ' + p.stock + '</span>' 
+                    : '<span class="badge bg-light text-muted border py-1 px-2 fs-12">' + '{{ __('No Stock') }}' + '</span>';
                 return '<div onclick="selectPurchProduct(' + p.id + ', \'' + p.name.replace(/'/g, "\\'") + '\')" ' +
-                    'style="padding:9px 14px;cursor:pointer;font-size:14px;' + (isSelected ? 'background:#e8f4ff;font-weight:600;' : '') + '" ' +
-                    'onmouseover="this.style.background=\'#f0f6ff\'" onmouseout="this.style.background=\'' + (isSelected?'#e8f4ff':'#fff') + '\'">' +
-                    '<span>' + p.name + '</span>' +
+                    'style="padding: 12px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f3f7; transition: background 0.15s ease;' + (isSelected ? 'background:#e8f4ff; font-weight:600;' : '') + '" ' +
+                    'onmouseover="this.style.background=\'#f6f8fb\'" onmouseout="this.style.background=\'' + (isSelected?'#e8f4ff':'#fff') + '\'">' +
+                    '<span style="font-size: 15px; color: #32267d; font-weight: 500;">' + p.name + '</span>' +
+                    stockBadge +
                     '</div>';
             }).join('');
         }
