@@ -146,5 +146,24 @@ Route::prefix('admin')->name('admin.')->middleware('auth')->group(function () {
         return view('admin.activity-log');
     })->name('activity-log.index');
 
+    Route::get('/test-ledger', function() {
+        $supplier = \App\Models\Supplier::where('name', 'like', '%الشاملي%')->first();
+        if (!$supplier) {
+            return "Supplier not found. Available suppliers: " . \App\Models\Supplier::pluck('name')->implode(', ');
+        }
+        $entries = \App\Models\SupplierLedger::where('supplier_id', $supplier->id)
+            ->orderBy('date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+        
+        $output = "Supplier: " . $supplier->name . " (ID: " . $supplier->id . ")<br><br>";
+        $running = 0;
+        foreach ($entries as $e) {
+            $running += ($e->credit - $e->debit);
+            $output .= "ID: {$e->id} | Date: {$e->date} | Type: {$e->type} | Desc: {$e->description} | Credit: {$e->credit} | Debit: {$e->debit} | Running Balance: {$running} | Ref: {$e->ref_type} #{$e->ref_id}<br>";
+        }
+        return $output;
+    })->name('test-ledger');
+
     Route::get('/{page}', [DashboardController::class, 'index'])->where('page', '[A-Za-z0-9\-]+')->name('dashboard');
 });
